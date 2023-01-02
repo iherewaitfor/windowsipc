@@ -27,11 +27,11 @@ int main()
 {
     int nRetCode = 0;
     HANDLE hPipe = NULL;
-    if (WritePipe()==FALSE)
+    if (WritePipe()==FALSE) //创建本进程写管道
     {
         return -1;
     }
-    if (ReadPipe()==FALSE)
+    if (ReadPipe()==FALSE)  //创建本进程读管道
     {
 
         return -1;
@@ -42,8 +42,8 @@ int main()
     {    
         if (bOk==TRUE)
         {
-            SetEvent(Context[0].hEvent);
-            SetEvent(Context[1].hEvent);
+            SetEvent(Context[0].hEvent); // 触发事件，以便让写线程开始接入输入
+            SetEvent(Context[1].hEvent); //触发事件，以便让读线程开始从管道读
 
             Sleep(1);
         }
@@ -160,10 +160,9 @@ DWORD WINAPI ReadPipeThread(LPVOID LPParam)
             break;
         }
 
+        ZeroMemory(szBuffer, MAX_PATH);
         if (ReadFile(hReadPipe,szBuffer,MAX_PATH,&dwReturn,NULL))
         {
-            //szBuffer[dwReturn] = '\0';
-
             cout<<szBuffer<<endl;
         }
         else

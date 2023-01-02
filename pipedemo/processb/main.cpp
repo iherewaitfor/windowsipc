@@ -54,13 +54,14 @@ DWORD WINAPI WritePipeThread(LPARAM LPParam)
     }
     while (TRUE)
     {
-
+        ZeroMemory(szBuffer, MAX_PATH);
         cin>>szBuffer;
-        if (WriteFile(hWritePipe,szBuffer,MAX_PATH,&dwReturn,NULL))
+        DWORD inputlen = strlen(szBuffer);
+        //if (WriteFile(hWritePipe,szBuffer,MAX_PATH,&dwReturn,NULL))
+        if (WriteFile(hWritePipe, szBuffer, inputlen, &dwReturn, NULL))
         {
     
         }
-
         else
         {
             if (GetLastError()==ERROR_NO_DATA)
