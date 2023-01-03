@@ -165,10 +165,10 @@ DWORD WINAPI ReadPipeThread(LPVOID LPParam)
 
         ZeroMemory(szBuffer, MAX_PATH);
         DWORD sizeLen = 0;
-        if (ReadFile(hReadPipe, &sizeLen, sizeof(DWORD), &dwReturn, NULL)) {
+        if (ReadFile(hReadPipe, &sizeLen, sizeof(DWORD), &dwReturn, NULL)) { // read size first.
             if (sizeLen > 0) {
                 cout << "size:" << sizeLen << endl;
-                if (ReadFile(hReadPipe, szBuffer, sizeLen, &dwReturn, NULL))
+                if (ReadFile(hReadPipe, szBuffer, sizeLen, &dwReturn, NULL))  // read sizeLen bytes.
                 {
                     cout << szBuffer << endl;
                 }

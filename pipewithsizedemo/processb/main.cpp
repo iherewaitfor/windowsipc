@@ -57,10 +57,8 @@ DWORD WINAPI WritePipeThread(LPARAM LPParam)
         ZeroMemory(szBuffer, MAX_PATH);
         cin>>(szBuffer + sizeof(DWORD));
         DWORD inputlen = strlen(szBuffer + sizeof(DWORD));
-        memcpy_s(szBuffer, MAX_PATH, &inputlen, sizeof(DWORD));
-        //WriteFile(hWritePipe, &inputlen, sizeof(DWORD), &dwReturn, NULL);
-        //if (WriteFile(hWritePipe,szBuffer,MAX_PATH,&dwReturn,NULL))
-        if (WriteFile(hWritePipe, szBuffer, inputlen + sizeof(DWORD), &dwReturn, NULL))
+        memcpy_s(szBuffer, MAX_PATH, &inputlen, sizeof(DWORD));  // write the size of bytes first.
+        if (WriteFile(hWritePipe, szBuffer, inputlen + sizeof(DWORD), &dwReturn, NULL)) // write bytes with size.
         {
     
         }
