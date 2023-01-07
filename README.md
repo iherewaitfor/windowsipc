@@ -356,9 +356,7 @@ DWORD WINAPI  ReadPipeThread(LPARAM LPParam)
 HANDLE CreateNamedPipeW(
   [in]           LPCWSTR               lpName,
   [in]           DWORD                 dwOpenMode,
-
-
-
+  [in]           DWORD                 dwPipeMode,
   [in]           DWORD                 nMaxInstances,
   [in]           DWORD                 nOutBufferSize,
   [in]           DWORD                 nInBufferSize,
