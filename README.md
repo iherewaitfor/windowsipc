@@ -423,6 +423,47 @@ A value of zero will result in a default time-out of 50 milliseconds.
 #### [in, optional] lpSecurityAttributes
 A pointer to a SECURITY_ATTRIBUTES structure that specifies a security descriptor for the new named pipe and determines whether child processes can inherit the returned handle. If lpSecurityAttributes is NULL, the named pipe gets a default security descriptor and the handle cannot be inherited. The ACLs in the default security descriptor for a named pipe grant full control to the LocalSystem account, administrators, and the creator owner. They also grant read access to members of the Everyone group and the anonymous account.
 
+## 命名管道通信带字节流大小pipewithsizedemo
+进行A创建读管道时，设置为字节流模式
+```C++
+
+    hReadPipe = CreateNamedPipe( 
+        READ_PIPE,             
+        PIPE_ACCESS_DUPLEX,
+        PIPE_TYPE_BYTE|
+        PIPE_READMODE_BYTE|
+        PIPE_WAIT,           
+        PIPE_UNLIMITED_INSTANCES, 
+        MAX_PATH,         
+        MAX_PATH,
+        0,                      
+        NULL); 
+```
+进程B进行写管道时(WritePipeThread)，先把要发的字节流的大小 先写进去。
+```C++
+        ZeroMemory(szBuffer, MAX_PATH);
+        cin>>(szBuffer + sizeof(DWORD));
+        DWORD inputlen = strlen(szBuffer + sizeof(DWORD));
+        memcpy_s(szBuffer, MAX_PATH, &inputlen, sizeof(DWORD));  // write the size of bytes first.
+        if (WriteFile(hWritePipe, szBuffer, inputlen + sizeof(DWORD), &dwReturn, NULL)) // write bytes with size.
+        {
+    
+```
+然后进程A从管道读字节时，先读大小。
+``` C++
+        ZeroMemory(szBuffer, MAX_PATH);
+        DWORD sizeLen = 0;
+        if (ReadFile(hReadPipe, &sizeLen, sizeof(DWORD), &dwReturn, NULL)) { // read size first.
+            if (sizeLen > 0) {
+                cout << "size:" << sizeLen << endl;
+                if (ReadFile(hReadPipe, szBuffer, sizeLen, &dwReturn, NULL))  // read sizeLen bytes.
+                {
+                    cout << szBuffer << endl;
+                }
+            }
+        }
+```
+
 ### 参考
 
 [https://www.cnblogs.com/zibility/p/5657308.html](https://www.cnblogs.com/zibility/p/5657308.html)
