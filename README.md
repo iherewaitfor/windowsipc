@@ -463,9 +463,145 @@ A pointer to a SECURITY_ATTRIBUTES structure that specifies a security descripto
             }
         }
 ```
+## 共享内存
+本例的代码位置位于[https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo](https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo)。
+进程A代码在[https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo/processa](https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo/processa), 进程B代码在[https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo/processb](https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo/processb)
+
+进程A使用[CreateFileMapping](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createfilemappinga)和[MapViewOfFile](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile)创建共享内存，并向共享内存写入内容。然后进程B通过[OpenFileMapping](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-openfilemappinga)和[MapViewOfFile](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-mapviewoffile)打开共享内存，并从共享内存中读取内容。本例中暂未考虑线程同步，先运行进程A，然后运行进程B。实际读写时，需要使用线程同步技术对共享内存进行读写。
+
+进程A代码
+```C++
+#include <Windows.h>
+#include <iostream>
+using namespace std;
+
+int main(int argc, TCHAR* argv[], TCHAR* envp[])
+{
+    int nRetCode = 0;
+
+    char szBuffer[] = "Shine";
+
+    HANDLE hMapping = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,0,4096,"ShareMemory");
+
+    LPVOID lpBase = MapViewOfFile(hMapping,FILE_MAP_WRITE|FILE_MAP_READ,0,0,0);
+
+    strcpy((char*)lpBase,szBuffer);
+
+    cout << "I have written \"" << szBuffer << "\" into share memory and sleep for 20 seconds." << endl;
+
+
+    Sleep(20000);
+
+
+    UnmapViewOfFile(lpBase);
+
+    CloseHandle(hMapping);
+
+
+    return nRetCode;
+}
+```
+进程B代码
+
+```C++
+#include <Windows.h>
+#include <iostream>
+int main(int argc, TCHAR* argv[], TCHAR* envp[])
+{
+    int nRetCode = 0;
+
+
+    HANDLE hMapping = OpenFileMapping(FILE_MAP_ALL_ACCESS,NULL,"ShareMemory");
+
+    if (hMapping)
+    {
+        wprintf(L"open FileMapping %s\r\n",L"Success");
+
+
+        LPVOID lpBase = MapViewOfFile(hMapping,FILE_MAP_READ|FILE_MAP_WRITE,0,0,0);
+
+        char szBuffer[20] = {0};
+
+        strcpy(szBuffer,(char*)lpBase);
+
+
+        printf("what I read from share memory is: \r\n%s",szBuffer);
+
+
+        UnmapViewOfFile(lpBase);
+
+        CloseHandle(hMapping);
+
+    }
+
+    else
+    {
+        wprintf(L"%s",L"OpenMapping Error");
+    }
+
+    return nRetCode;
+}
+```
+
+###[CreateFileMapping](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createfilemappinga)
+```C++
+HANDLE CreateFileMappingA(
+  [in]           HANDLE                hFile,
+  [in, optional] LPSECURITY_ATTRIBUTES lpFileMappingAttributes,
+  [in]           DWORD                 flProtect,
+  [in]           DWORD                 dwMaximumSizeHigh,
+  [in]           DWORD                 dwMaximumSizeLow,
+  [in, optional] LPCSTR                lpName
+);
+```
+参数详解
+#### [in]           HANDLE                hFile,
+创建共享内存时，传INVALID_HANDLE_VALUE。
+
+A handle to the file from which to create a file mapping object.
+
+The file must be opened with access rights that are compatible with the protection flags that the flProtect parameter specifies. It is not required, but it is recommended that files you intend to map be opened for exclusive access. For more information, see File Security and Access Rights.
+
+If hFile is INVALID_HANDLE_VALUE, the calling process must also specify a size for the file mapping object in the dwMaximumSizeHigh and dwMaximumSizeLow parameters. In this scenario, CreateFileMapping creates a file mapping object of a specified size that is backed by the system paging file instead of by a file in the file system.
+####   [in, optional] LPSECURITY_ATTRIBUTES lpFileMappingAttributes
+A pointer to a SECURITY_ATTRIBUTES structure that determines whether a returned handle can be inherited by child processes. The lpSecurityDescriptor member of the SECURITY_ATTRIBUTES structure specifies a security descriptor for a new file mapping object.
+
+If lpFileMappingAttributes is NULL, the handle cannot be inherited and the file mapping object gets a default security descriptor. The access control lists (ACL) in the default security descriptor for a file mapping object come from the primary or impersonation token of the creator. For more information, see File Mapping Security and Access Rights.
+####   [in]           DWORD                 flProtect
+Specifies the page protection of the file mapping object. All mapped views of the object must be compatible with this protection.
+This parameter can be one of the following values.
+|Value|Meaning|
+|:--|:--|
+|PAGE_EXECUTE_READWRITE  0x40|Allows views to be mapped for read-only, copy-on-write, or execute access.  <br>The file handle specified by the hFile parameter must be created with the GENERIC_READ and GENERIC_EXECUTE access rights. <br>Windows Server 2003 and Windows XP:  This value is not available until Windows XP with SP2 and Windows Server 2003 with SP1.|
+|PAGE_EXECUTE_READWRITE   0x40|Allows views to be mapped for read-only, copy-on-write, read/write, or execute access.  The file handle that the hFile parameter specifies must be created with the GENERIC_READ, GENERIC_WRITE, and GENERIC_EXECUTE access rights.   Windows Server 2003 and Windows XP:  This value is not available until Windows XP with SP2 and Windows Server 2003 with SP1.|
+|PAGE_EXECUTE_WRITECOPY  0x80|Allows views to be mapped for read-only, copy-on-write, or execute access. This value is equivalent to PAGE_EXECUTE_READ.   The file handle that the hFile parameter specifies must be created with the GENERIC_READ and GENERIC_EXECUTE access rights.   Windows Vista:  This value is not available until Windows Vista with SP1.  Windows Server 2003 and Windows XP:  This value is not supported.|
+|PAGE_READONLY<br>0x02|Allows views to be mapped for read-only or copy-on-write access. An attempt to write to a specific region results in an access violation. The file handle that the hFile parameter specifies must be created with the GENERIC_READ access right.|
+|PAGE_READWRITE <br>0x04| Allows views to be mapped for read-only, copy-on-write, or read/write access. The file handle that the hFile parameter specifies must be created with the GENERIC_READ and GENERIC_WRITE access rights.|
+|PAGE_WRITECOPY  0x08|Allows views to be mapped for read-only or copy-on-write access. This value is equivalent to PAGE_READONLY.   The file handle that the hFile parameter specifies must be created with the GENERIC_READ access right.|
+
+#### [in]           DWORD                 dwMaximumSizeHigh
+The high-order DWORD of the maximum size of the file mapping object.
+####  [in]           DWORD                 dwMaximumSizeLow
+The low-order DWORD of the maximum size of the file mapping object.
+
+If this parameter and dwMaximumSizeHigh are 0 (zero), the maximum size of the file mapping object is equal to the current size of the file that hFile identifies.
+
+An attempt to map a file with a length of 0 (zero) fails with an error code of ERROR_FILE_INVALID. Applications should test for files with a length of 0 (zero) and reject those files.
+
+#### [in, optional] LPCSTR                lpName
+The name of the file mapping object.
+
+If this parameter matches the name of an existing mapping object, the function requests access to the object with the protection that flProtect specifies.
+
+If this parameter is NULL, the file mapping object is created without a name.
 
 ### 参考
+[https://learn.microsoft.com/en-US/windows/win32/ipc/interprocess-communications](https://learn.microsoft.com/en-US/windows/win32/ipc/interprocess-communications)
 
 [https://www.cnblogs.com/zibility/p/5657308.html](https://www.cnblogs.com/zibility/p/5657308.html)
 
 [https://learn.microsoft.com/en-us/windows/win32/ipc/pipes](https://learn.microsoft.com/en-us/windows/win32/ipc/pipes)
+
+[https://learn.microsoft.com/en-us/windows/win32/memory/file-mapping](https://learn.microsoft.com/en-us/windows/win32/memory/file-mapping)
+
+[https://learn.microsoft.com/en-us/windows/win32/memory/creating-named-shared-memory](https://learn.microsoft.com/en-us/windows/win32/memory/creating-named-shared-memory)

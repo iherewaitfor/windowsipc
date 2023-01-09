@@ -8,7 +8,7 @@ int main(int argc, TCHAR* argv[], TCHAR* envp[])
 
     char szBuffer[] = "Shine";
 
-    HANDLE hMapping = CreateFileMapping(NULL,NULL,PAGE_READWRITE,0,4096,"ShareMemory");
+    HANDLE hMapping = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE,0,4096,"ShareMemory");
 
 
     LPVOID lpBase = MapViewOfFile(hMapping,FILE_MAP_WRITE|FILE_MAP_READ,0,0,0);

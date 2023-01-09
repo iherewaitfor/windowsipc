@@ -117,10 +117,7 @@ BOOL  ReadPipe()
         PIPE_ACCESS_DUPLEX,
         PIPE_TYPE_BYTE|
         PIPE_READMODE_BYTE|
-        PIPE_WAIT,
-/*        PIPE_TYPE_MESSAGE |    
-        PIPE_READMODE_MESSAGE |  
-        PIPE_WAIT, */              
+        PIPE_WAIT,           
         PIPE_UNLIMITED_INSTANCES, 
         MAX_PATH,         
         MAX_PATH,
