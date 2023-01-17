@@ -371,7 +371,7 @@ HANDLE CreateNamedPipeW(
 ```
 \\.\pipe\pipename
 ```
-注意名字的惟一性需要自己去定义。不要用太通道的名字，以名名字冲突。
+注意名字的惟一性需要自己去定义。不要用太通用的名字，以免名字冲突。
 
 ####   [in]           DWORD                 dwOpenMode,
 打开模式
