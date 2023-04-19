@@ -566,7 +566,7 @@ If hFile is INVALID_HANDLE_VALUE, the calling process must also specify a size f
 ####   [in, optional] LPSECURITY_ATTRIBUTES lpFileMappingAttributes
 A pointer to a SECURITY_ATTRIBUTES structure that determines whether a returned handle can be inherited by child processes. The lpSecurityDescriptor member of the SECURITY_ATTRIBUTES structure specifies a security descriptor for a new file mapping object.
 
-If lpFileMappingAttributes is NULL, the handle cannot be inherited and the file mapping object gets a default security descriptor. The access control lists (ACL) in the default security descriptor for a file mapping object come from the primary or impersonation token of the creator. For more information, see File Mapping Security and Access Rights.
+If lpFileMappingAttributes is NULL, the handle cannot be inherited and the file mapping object gets a default security descriptor. The access control lists (ACL) in the default security descriptor for a file mapping object come from the primary or impersonation token of the creator. For more information, see [File Mapping Security and Access Rights](https://learn.microsoft.com/en-us/windows/desktop/Memory/file-mapping-security-and-access-rights).
 ####   [in]           DWORD                 flProtect
 Specifies the page protection of the file mapping object. All mapped views of the object must be compatible with this protection.
 This parameter can be one of the following values.
@@ -605,3 +605,5 @@ If this parameter is NULL, the file mapping object is created without a name.
 [https://learn.microsoft.com/en-us/windows/win32/memory/file-mapping](https://learn.microsoft.com/en-us/windows/win32/memory/file-mapping)
 
 [https://learn.microsoft.com/en-us/windows/win32/memory/creating-named-shared-memory](https://learn.microsoft.com/en-us/windows/win32/memory/creating-named-shared-memory)
+
+[https://learn.microsoft.com/en-us/windows/desktop/Memory/file-mapping-security-and-access-rights](https://learn.microsoft.com/en-us/windows/desktop/Memory/file-mapping-security-and-access-rights)
