@@ -1,4 +1,27 @@
+
+- [Windows IPC](#windows-ipc)
+  - [命名管道通信](#命名管道通信)
+    - [CreateNamedPipeW详解](#createnamedpipew详解)
+      - [\[in\]           LPCWSTR               lpName,](#in-----------lpcwstr---------------lpname)
+      - [\[in\]           DWORD                 dwOpenMode,](#in-----------dword-----------------dwopenmode)
+      - [\[in\]           DWORD                 dwPipeMode,](#in-----------dword-----------------dwpipemode)
+      - [\[in\] nMaxInstances](#in-nmaxinstances)
+      - [\[in\] nOutBufferSize](#in-noutbuffersize)
+      - [\[in\] nInBufferSize](#in-ninbuffersize)
+      - [\[in\] nDefaultTimeOut](#in-ndefaulttimeout)
+      - [\[in, optional\] lpSecurityAttributes](#in-optional-lpsecurityattributes)
+  - [命名管道通信带字节流大小pipewithsizedemo](#命名管道通信带字节流大小pipewithsizedemo)
+  - [共享内存](#共享内存)
+      - [\[in\]           HANDLE                hFile,](#in-----------handle----------------hfile)
+      - [\[in, optional\] LPSECURITY\_ATTRIBUTES lpFileMappingAttributes](#in-optional-lpsecurity_attributes-lpfilemappingattributes)
+      - [\[in\]           DWORD                 flProtect](#in-----------dword-----------------flprotect)
+      - [\[in\]           DWORD                 dwMaximumSizeHigh](#in-----------dword-----------------dwmaximumsizehigh)
+      - [\[in\]           DWORD                 dwMaximumSizeLow](#in-----------dword-----------------dwmaximumsizelow)
+      - [\[in, optional\] LPCSTR                lpName](#in-optional-lpcstr----------------lpname)
+    - [参考](#参考)
+
 # Windows IPC
+
 ## 命名管道通信
 
 本例的代码位置位于[https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo](https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo)。
