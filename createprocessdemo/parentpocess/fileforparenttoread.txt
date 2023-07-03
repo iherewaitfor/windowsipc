@@ -1,0 +1,2 @@
+parent read content from this file , then write to child process, read from child process.
+you should see the content at parent output.
