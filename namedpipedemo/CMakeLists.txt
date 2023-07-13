@@ -12,3 +12,5 @@ set(TARGET_OUT_DIR "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
 add_subdirectory(serveroverlapped)
 add_subdirectory(client)
 add_subdirectory(servermultithreaded)
+add_subdirectory(clientinput)
+
