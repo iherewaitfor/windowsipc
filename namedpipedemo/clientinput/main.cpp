@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <conio.h>
 #include <tchar.h>
+#include <iostream>
 
 #define BUFSIZE 512
  
@@ -69,14 +70,22 @@ int _tmain(int argc, TCHAR *argv[])
       return -1;
    }
  ////test//////////////////////////////////////////////////////////////
+   std::cout << "please input message to server.(input \"exit\" to exit)." << std::endl;
    do {
        // Send a message to the pipe server. 
        ZeroMemory(sendBuf, BUFSIZE);
-       scanf_s("%511s", sendBuf, (unsigned)_countof(sendBuf));
+       char  ch;
+       int i = 0;
+       while (std::cin >> std::noskipws >> ch) {
+           if (ch == '\n') {
+               break;
+           }
+           sendBuf[i++] = ch;
+       }
        cbToWrite = (lstrlen(sendBuf) + 1) * sizeof(TCHAR);
        _tprintf(TEXT("process %d Sending %d byte message: \"%s\"\n"), GetCurrentProcessId(), cbToWrite, sendBuf);
 
-       int cmpResult =  strcmp(sendBuf, "end");
+       int cmpResult =  strcmp(sendBuf, "exit");
        if (cmpResult == 0) {
            break;
        }
@@ -120,49 +129,6 @@ int _tmain(int argc, TCHAR *argv[])
        }
 
    } while (true);
-//// Send a message to the pipe server. 
-// 
-//   cbToWrite = (lstrlen(sendBuf)+1)*sizeof(TCHAR);
-//   _tprintf( TEXT("process %d Sending %d byte message: \"%s\"\n"),GetCurrentProcessId() , cbToWrite, lpvMessage); 
-//
-//
-//   fSuccess = WriteFile( 
-//      hPipe,                  // pipe handle 
-//       sendBuf,             // message 
-//      cbToWrite,              // message length 
-//      &cbWritten,             // bytes written 
-//      NULL);                  // not overlapped 
-//
-//   if ( ! fSuccess) 
-//   {
-//      _tprintf( TEXT("WriteFile to pipe failed. GLE=%d\n"), GetLastError() ); 
-//      return -1;
-//   }
-//
-//   printf("\nMessage sent to server, receiving reply as follows:\n");
-// 
-//   do 
-//   { 
-//   // Read from the pipe. 
-// 
-//      fSuccess = ReadFile( 
-//         hPipe,    // pipe handle 
-//         chBuf,    // buffer to receive reply 
-//         BUFSIZE*sizeof(TCHAR),  // size of buffer 
-//         &cbRead,  // number of bytes read 
-//         NULL);    // not overlapped 
-// 
-//      if ( ! fSuccess && GetLastError() != ERROR_MORE_DATA )
-//         break; 
-// 
-//      _tprintf( TEXT("\"%s\"\n"), chBuf ); 
-//   } while ( ! fSuccess);  // repeat loop if ERROR_MORE_DATA 
-//
-//   if ( ! fSuccess)
-//   {
-//      _tprintf( TEXT("ReadFile from pipe failed. GLE=%d\n"), GetLastError() );
-//      return -1;
-//   }
 
    printf("\n<End of message, press ENTER to terminate connection and exit>");
    _getch();
