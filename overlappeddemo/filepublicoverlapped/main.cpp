@@ -4,82 +4,92 @@
 #include <strsafe.h>
 #include <iostream>
  
-#define CONNECTING_STATE 0 
-#define READING_STATE 1 
-#define WRITING_STATE 2 
-#define INSTANCES 4 
-#define PIPE_TIMEOUT 5000
+#define WAIT_TIMEOUT 5000
 #define BUFSIZE 4096
  
-typedef struct 
-{ 
-   OVERLAPPED oOverlap; 
-   HANDLE handleFile; 
-   TCHAR readBuff[BUFSIZE]; 
-   DWORD cbRead;
-   TCHAR writeBuffer[BUFSIZE];
-   DWORD cbToWrite; 
-   DWORD dwState; 
-   BOOL fPendingIO; 
-} FileOverLapped, *LPFileOverLapped;
+struct  FileOverLapped : public OVERLAPPED
+{
+	HANDLE handleFile;
+	TCHAR readBuff[BUFSIZE];
+	DWORD cbRead;
+	TCHAR writeBuffer[BUFSIZE];
+	DWORD cbToWrite;
+	FileOverLapped() {
+		Internal = 0;
+		InternalHigh = 0;
+		Offset = 0;
+		OffsetHigh = 0;
+
+		//customer
+		handleFile = NULL;
+		cbRead = 0;
+		cbToWrite = 0;
+
+		ZeroMemory(readBuff, sizeof(readBuff));
+		ZeroMemory(writeBuffer, sizeof(readBuff));
+
+		// Create a non-signalled, manual-reset event,
+		hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+		if (!hEvent)
+		{
+			DWORD last_error = ::GetLastError();
+			last_error;
+		}
+	}
+	virtual ~FileOverLapped() {
+		if (hEvent) {
+			::CloseHandle(hEvent);
+		}
+	}
+};
 
  
 int _tmain(VOID) 
 { 
-	HANDLE hFile  = CreateFile("test.txt", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+	HANDLE hFile  = CreateFile("overlappedtest.txt", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
 		CREATE_ALWAYS, FILE_FLAG_OVERLAPPED, NULL); //FILE_FLAG_OVERLAPPED
 
-
-
 	FileOverLapped writeOverLap;
-	writeOverLap = { 0 };
-	writeOverLap.oOverlap = { 0 };
-	writeOverLap.oOverlap.hEvent = CreateEvent(NULL, true, false, "WriteEvent");
-	writeOverLap.oOverlap.Offset = 0; //注意实际应用写的文件位置要与读的文件位置不重叠。
+	writeOverLap.handleFile = hFile;
 	const char* wData = "this is write to the test.txt. overlapped  test.";
 	memcpy_s(writeOverLap.writeBuffer, BUFSIZE, wData, strlen(wData));
-	bool ok = WriteFile(hFile, writeOverLap.writeBuffer, strlen(writeOverLap.writeBuffer), nullptr, &writeOverLap.oOverlap);
+	bool ok = WriteFile(hFile, writeOverLap.writeBuffer, strlen(writeOverLap.writeBuffer), nullptr, &writeOverLap);
 	std::cout << "WriteFile ok=" << ok << " GetLastError():" << GetLastError() << std::endl;
 
 
 	FileOverLapped readOverLap;
-	readOverLap = { 0 };
-	readOverLap.oOverlap = { 0 };
-	readOverLap.oOverlap.hEvent = CreateEvent(NULL, true, false, "ReadEvent");
-	readOverLap.oOverlap.Offset = 0;
-	 ok = ReadFile(hFile, readOverLap.readBuff, 10, nullptr, &readOverLap.oOverlap);
+	readOverLap.handleFile = hFile;
+	 ok = ReadFile(hFile, readOverLap.readBuff, 10, nullptr, &readOverLap);
 	std::cout << "ReadFile ok=" << ok << " GetLastError():" << GetLastError() << std::endl;
 	if (!ok) {
 		if (GetLastError() != ERROR_IO_PENDING) {
 			std::cout << "ReadFile faile GetLastError():" << GetLastError() << std::endl;
 		}
-
 	}
 
-
 	HANDLE events[2];
-	events[0] = writeOverLap.oOverlap.hEvent;
-	events[1] = readOverLap.oOverlap.hEvent;
+	events[0] = writeOverLap.hEvent;
+	events[1] = readOverLap.hEvent;
 
 	bool writeDone = false;
 	bool readDone = false;
 	do {
 
-		DWORD dw = WaitForMultipleObjects(2, events, false, 5000);
+		DWORD dw = WaitForMultipleObjects(2, events, false, WAIT_TIMEOUT);
 		DWORD result = dw - WAIT_OBJECT_0;
 		if (result == 0) // write event
 		{
 			std::cout << "overlapped write done." << std::endl;
-			std::cout << "has wiritted " << writeOverLap.oOverlap.InternalHigh << " bytes" << std::endl;
-			writeOverLap.cbToWrite = writeOverLap.oOverlap.InternalHigh;
+			std::cout << "has wiritted " << writeOverLap.InternalHigh << " bytes" << std::endl;
+			writeOverLap.cbToWrite = writeOverLap.InternalHigh;
 			writeDone = true;
 			ResetEvent(events[0]); //本事件，创建时，使用了bManualReset=true，所以此处手动设置一下信号未触发。
 		}
 		else if (result == 1)  // read event
 		{
 			std::cout << "overlapped read done." << std::endl;
-			std::cout << "has read " << readOverLap.oOverlap.InternalHigh << " bytes" << std::endl;
-			readOverLap.cbRead = readOverLap.oOverlap.InternalHigh;
+			std::cout << "has read " << readOverLap.InternalHigh << " bytes" << std::endl;
+			readOverLap.cbRead = readOverLap.InternalHigh;
 			readDone = true;
 			ResetEvent(events[1]);//本事件，创建时，使用了bManualReset=true，所以此处手动设置一下信号未触发。
 		}
