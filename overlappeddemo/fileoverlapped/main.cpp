@@ -61,23 +61,34 @@ int _tmain(VOID)
 	events[0] = writeOverLap.oOverlap.hEvent;
 	events[1] = readOverLap.oOverlap.hEvent;
 
-	DWORD dw = WaitForMultipleObjects(2, events, false, 5000);
-	DWORD result = dw - WAIT_OBJECT_0;
-	if (result == 0) // write event
-	{
-		std::cout << "overlapped write done." << std::endl;
-		std::cout << "has wiritted " << writeOverLap.oOverlap.InternalHigh << " bytes" << std::endl;
-		writeOverLap.cbToWrite = writeOverLap.oOverlap.InternalHigh;
-	}
-	else if (result == 1)  // read event
-	{
-		std::cout << "overlapped read done." << std::endl;
-		std::cout << "has read " << readOverLap.oOverlap.InternalHigh << " bytes" << std::endl;
-		readOverLap.cbRead = readOverLap.oOverlap.InternalHigh;
-	}
-	else {
-		std::cout << " error dw = " << dw << std::endl;
-	}
+	bool writeDone = false;
+	bool readDone = false;
+	do {
+
+		DWORD dw = WaitForMultipleObjects(2, events, false, 5000);
+		DWORD result = dw - WAIT_OBJECT_0;
+		if (result == 0) // write event
+		{
+			std::cout << "overlapped write done." << std::endl;
+			std::cout << "has wiritted " << writeOverLap.oOverlap.InternalHigh << " bytes" << std::endl;
+			writeOverLap.cbToWrite = writeOverLap.oOverlap.InternalHigh;
+			writeDone = true;
+			ResetEvent(events[0]); //本事件，创建时，使用了bManualReset=true，所以此处手动设置一下信号未触发。
+		}
+		else if (result == 1)  // read event
+		{
+			std::cout << "overlapped read done." << std::endl;
+			std::cout << "has read " << readOverLap.oOverlap.InternalHigh << " bytes" << std::endl;
+			readOverLap.cbRead = readOverLap.oOverlap.InternalHigh;
+			readDone = true;
+			ResetEvent(events[1]);//本事件，创建时，使用了bManualReset=true，所以此处手动设置一下信号未触发。
+		}
+		else {
+			std::cout << " error dw = " << dw << std::endl;
+			break;
+		}
+
+	} while (!writeDone || !readDone); //验证读写都完成就退出循环
 
 	getchar();
  
