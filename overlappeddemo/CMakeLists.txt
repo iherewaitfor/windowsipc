@@ -11,3 +11,4 @@ set(TARGET_OUT_DIR "${CMAKE_BINARY_DIR}/$<CONFIGURATION>")
 
 add_subdirectory(fileoverlapped)
 add_subdirectory(filepublicoverlapped)
+add_subdirectory(servernamedpipe)
