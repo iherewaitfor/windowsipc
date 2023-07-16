@@ -22,6 +22,41 @@ typedef struct
     BOOL fPendingIO;
 } PIPEINST, * LPPIPEINST;
 
+struct  PipeOverLapped : public OVERLAPPED
+{
+    HANDLE handleFile;
+    TCHAR readBuff[BUFSIZE];
+    DWORD cbRead;
+    TCHAR writeBuffer[BUFSIZE];
+    DWORD cbToWrite;
+    PipeOverLapped() {
+        Internal = 0;
+        InternalHigh = 0;
+        Offset = 0;
+        OffsetHigh = 0;
+
+        //customer
+        handleFile = NULL;
+        cbRead = 0;
+        cbToWrite = 0;
+
+        ZeroMemory(readBuff, sizeof(readBuff));
+        ZeroMemory(writeBuffer, sizeof(readBuff));
+
+        // Create a non-signalled, manual-reset event,
+        hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+        if (!hEvent)
+        {
+            DWORD last_error = ::GetLastError();
+            last_error;
+        }
+    }
+    virtual ~PipeOverLapped() {
+        if (hEvent) {
+            ::CloseHandle(hEvent);
+        }
+    }
+};
 
 VOID DisconnectAndReconnect(DWORD);
 BOOL ConnectToNewClient(HANDLE, LPOVERLAPPED);
@@ -29,6 +64,21 @@ VOID GetAnswerToRequest(LPPIPEINST);
 
 PIPEINST Pipe[INSTANCES];
 HANDLE hEvents[INSTANCES];
+
+//ConnectNamedPipe
+//ReadFile
+//WriteFile
+PipeOverLapped pipeOverlappeds[INSTANCES * 3];
+
+//最后一个是工作线程结束事件
+HANDLE events[INSTANCES*3 +1];
+
+//to do 
+// define an read array
+// define an write array
+
+// define an CS fro read array
+// define an CS for write array
 
 int _tmain(VOID)
 {
@@ -43,26 +93,7 @@ int _tmain(VOID)
 
     for (i = 0; i < INSTANCES; i++)
     {
-
-        // Create an event object for this instance. 
-
-        hEvents[i] = CreateEvent(
-            NULL,    // default security attribute 
-            TRUE,    // manual-reset event 
-            TRUE,    // initial state = signaled 
-            NULL);   // unnamed event object 
-
-        if (hEvents[i] == NULL)
-        {
-            printf("CreateEvent failed with %d.\n", GetLastError());
-            return 0;
-        }
-
-        Pipe[i].oOverlap.hEvent = hEvents[i];
-        Pipe[i].oOverlap.Offset = 0;
-        Pipe[i].oOverlap.OffsetHigh = 0;
-
-        Pipe[i].hPipeInst = CreateNamedPipe(
+        HANDLE pipeHandle = CreateNamedPipe(
             lpszPipename,            // pipe name 
             PIPE_ACCESS_DUPLEX |     // read/write access 
             FILE_FLAG_OVERLAPPED,    // overlapped mode 
@@ -75,22 +106,28 @@ int _tmain(VOID)
             PIPE_TIMEOUT,            // client time-out 
             NULL);                   // default security attributes 
 
-        if (Pipe[i].hPipeInst == INVALID_HANDLE_VALUE)
+        if (pipeHandle == INVALID_HANDLE_VALUE)
         {
             printf("CreateNamedPipe failed with %d.\n", GetLastError());
             return 0;
         }
-
-        // Call the subroutine to connect to the new client
-
-        Pipe[i].fPendingIO = ConnectToNewClient(
-            Pipe[i].hPipeInst,
-            &Pipe[i].oOverlap);
-
-        Pipe[i].dwState = Pipe[i].fPendingIO ?
-            CONNECTING_STATE : // still connecting 
-            READING_STATE;     // ready to read 
+        int index = i * 3;
+        pipeOverlappeds[index].handleFile = pipeHandle;
+        pipeOverlappeds[index+1].handleFile = pipeHandle;
+        pipeOverlappeds[index+2].handleFile = pipeHandle;
+        events[index] = pipeOverlappeds[index].hEvent;
+        events[index+1] = pipeOverlappeds[index+1].hEvent;
+        events[index+2] = pipeOverlappeds[index+2].hEvent;
     }
+    // Create a non-signalled, manual-reset event,
+    // thread stop event
+    HANDLE hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    if (!hEvent)
+    {
+        DWORD last_error = ::GetLastError();
+        last_error;
+    }
+    events[INSTANCES * 3 - 1] = hEvent;  //线程停止事件
 
     while (1)
     {
