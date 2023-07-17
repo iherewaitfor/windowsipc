@@ -2,25 +2,13 @@
 #include <stdio.h>
 #include <tchar.h>
 #include <strsafe.h>
+#include <iostream>
 
-#define CONNECTING_STATE 0 
-#define READING_STATE 1 
-#define WRITING_STATE 2 
+#include <process.h>
+
 #define INSTANCES 4 
 #define PIPE_TIMEOUT 5000
 #define BUFSIZE 4096
-
-typedef struct
-{
-    OVERLAPPED oOverlap;
-    HANDLE hPipeInst;
-    TCHAR chRequest[BUFSIZE];
-    DWORD cbRead;
-    TCHAR chReply[BUFSIZE];
-    DWORD cbToWrite;
-    DWORD dwState;
-    BOOL fPendingIO;
-} PIPEINST, * LPPIPEINST;
 
 struct  PipeOverLapped : public OVERLAPPED
 {
@@ -58,11 +46,6 @@ struct  PipeOverLapped : public OVERLAPPED
     }
 };
 
-VOID DisconnectAndReconnect(DWORD);
-BOOL ConnectToNewClient(HANDLE, LPOVERLAPPED);
-VOID GetAnswerToRequest(LPPIPEINST);
-
-PIPEINST Pipe[INSTANCES];
 HANDLE hEvents[INSTANCES];
 
 //ConnectNamedPipe
@@ -79,6 +62,96 @@ HANDLE events[INSTANCES*3 +1];
 
 // define an CS fro read array
 // define an CS for write array
+
+TCHAR sendBuf[BUFSIZE] = { 0 };
+
+BOOL ConnectToNewClient(HANDLE hPipe, LPOVERLAPPED lpo);
+
+unsigned int __stdcall ThreadOverlapped(PVOID pM)
+{
+    printf("线程ID号为%4d的子线程说：Hello World\n", GetCurrentThreadId());
+
+    for (int i = 0; i < INSTANCES; i++) {
+        ConnectToNewClient(pipeOverlappeds[i * 3].handleFile, &pipeOverlappeds[i * 3]);
+    }
+    DWORD dwWait;
+    bool bStop = false;
+    while (!bStop) {
+        dwWait = WaitForMultipleObjects(
+            INSTANCES * 3 + 1,    // number of event objects 
+            events,      // array of event objects 
+            FALSE,        // does not wait for all 
+            INFINITE);    // waits indefinitely 
+
+      // dwWait shows which pipe completed the operation. 
+
+        DWORD waitIndex = dwWait - WAIT_OBJECT_0;
+        if (waitIndex == INSTANCES * 3 ) {
+            bStop = true;
+            break;
+        }
+        if (waitIndex > INSTANCES * 3) {
+            std::cout << "error waitIndex:" << waitIndex << "  error:" << GetLastError();
+            bStop = true;
+            break;
+        }
+        DWORD index = waitIndex / 3;
+        if (waitIndex == 3 * index) {
+            //ConnectNamedPipe
+            // to read or write
+            // to do: read
+            PipeOverLapped* pReadOverLapped = &pipeOverlappeds[waitIndex + 1];
+            bool fSuccess = ReadFile(
+                pReadOverLapped->handleFile,
+                pReadOverLapped->readBuff,
+                BUFSIZE * sizeof(TCHAR),
+                &pReadOverLapped->cbRead,
+                pReadOverLapped);
+
+            ResetEvent(events[waitIndex]);
+
+        }
+        else if (waitIndex == 3 * index + 1) {
+            //read done
+            std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
+            // to do add the data to the read list;
+            ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
+
+
+            // test : to write respone immedialy.
+            PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[waitIndex + 1];
+            StringCchCopy(pWriteOverLapped->writeBuffer, BUFSIZE, TEXT("Default answer from server"));
+            pWriteOverLapped->cbToWrite = (lstrlen(pWriteOverLapped->writeBuffer) + 1) * sizeof(TCHAR);
+
+            WriteFile(
+                pWriteOverLapped->handleFile,
+                pWriteOverLapped->writeBuffer,
+                pWriteOverLapped->cbToWrite,
+                &pWriteOverLapped->cbToWrite,
+                pWriteOverLapped
+            );
+            ResetEvent(events[waitIndex]);
+        }
+        else {
+            //write done
+            ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
+
+            PipeOverLapped* pReadOverLapped = &pipeOverlappeds[waitIndex -1];
+            bool fSuccess = ReadFile(
+                pReadOverLapped->handleFile,
+                pReadOverLapped->readBuff,
+                BUFSIZE * sizeof(TCHAR),
+                &pReadOverLapped->cbRead,
+                pReadOverLapped);
+
+            ResetEvent(events[waitIndex]);
+        }        
+    }
+    std::cout << "worker thread exit" << std::endl;
+
+    return 0;
+}
+//主函
 
 int _tmain(VOID)
 {
@@ -112,9 +185,9 @@ int _tmain(VOID)
             return 0;
         }
         int index = i * 3;
-        pipeOverlappeds[index].handleFile = pipeHandle;
-        pipeOverlappeds[index+1].handleFile = pipeHandle;
-        pipeOverlappeds[index+2].handleFile = pipeHandle;
+        pipeOverlappeds[index].handleFile = pipeHandle;     //ConnectNamedPipe
+        pipeOverlappeds[index+1].handleFile = pipeHandle;   //ReadFile
+        pipeOverlappeds[index+2].handleFile = pipeHandle;   //WriteFile
         events[index] = pipeOverlappeds[index].hEvent;
         events[index+1] = pipeOverlappeds[index+1].hEvent;
         events[index+2] = pipeOverlappeds[index+2].hEvent;
@@ -127,197 +200,41 @@ int _tmain(VOID)
         DWORD last_error = ::GetLastError();
         last_error;
     }
-    events[INSTANCES * 3 - 1] = hEvent;  //线程停止事件
+    events[INSTANCES * 3] = hEvent;  //工作线程停止事件
+    HANDLE hThread;
+    unsigned threadID;
 
-    while (1)
-    {
-        // Wait for the event object to be signaled, indicating 
-        // completion of an overlapped read, write, or 
-        // connect operation. 
+    printf("Creating second thread...\n");
 
-        dwWait = WaitForMultipleObjects(
-            INSTANCES,    // number of event objects 
-            hEvents,      // array of event objects 
-            FALSE,        // does not wait for all 
-            INFINITE);    // waits indefinitely 
+    // Create the worker thread.
+    hThread = (HANDLE)_beginthreadex(NULL, 0, &ThreadOverlapped, NULL, 0, &threadID);
 
-      // dwWait shows which pipe completed the operation. 
-
-        i = dwWait - WAIT_OBJECT_0;  // determines which pipe 
-        if (i < 0 || i >(INSTANCES - 1))
-        {
-            printf("Index out of range.\n");
-            return 0;
+    do {
+        // Send a message to all valid pipe. 
+        ZeroMemory(sendBuf, BUFSIZE);
+        char  ch;
+        int i = 0;
+        while (std::cin >> std::noskipws >> ch) {
+            if (ch == '\n') {
+                break;
+            }
+            sendBuf[i++] = ch;
         }
+        DWORD cbToWrite = (lstrlen(sendBuf) + 1) * sizeof(TCHAR);
+        _tprintf(TEXT("process %d Sending %d byte message: \"%s\"\n"), GetCurrentProcessId(), cbToWrite, sendBuf);
 
-        // Get the result if the operation was pending. 
-
-        if (Pipe[i].fPendingIO)
-        {
-            fSuccess = GetOverlappedResult(
-                Pipe[i].hPipeInst, // handle to pipe 
-                &Pipe[i].oOverlap, // OVERLAPPED structure 
-                &cbRet,            // bytes transferred 
-                FALSE);            // do not wait 
-
-            switch (Pipe[i].dwState)
-            {
-                // Pending connect operation 
-            case CONNECTING_STATE:
-                if (!fSuccess)
-                {
-                    printf("Error %d.\n", GetLastError());
-                    return 0;
-                }
-                Pipe[i].dwState = READING_STATE;
-                break;
-
-                // Pending read operation 
-            case READING_STATE:
-                if (!fSuccess || cbRet == 0)
-                {
-                    DisconnectAndReconnect(i);
-                    continue;
-                }
-                Pipe[i].cbRead = cbRet;
-                Pipe[i].dwState = WRITING_STATE;
-                break;
-
-                // Pending write operation 
-            case WRITING_STATE:
-                if (!fSuccess || cbRet != Pipe[i].cbToWrite)
-                {
-                    DisconnectAndReconnect(i);
-                    continue;
-                }
-                Pipe[i].dwState = READING_STATE;
-                break;
-
-            default:
-            {
-                printf("Invalid pipe state.\n");
-                return 0;
-            }
-            }
-        }
-
-        // The pipe state determines which operation to do next. 
-
-        switch (Pipe[i].dwState)
-        {
-            // READING_STATE: 
-            // The pipe instance is connected to the client 
-            // and is ready to read a request from the client. 
-
-        case READING_STATE:
-            fSuccess = ReadFile(
-                Pipe[i].hPipeInst,
-                Pipe[i].chRequest,
-                BUFSIZE * sizeof(TCHAR),
-                &Pipe[i].cbRead,
-                &Pipe[i].oOverlap);
-
-            // The read operation completed successfully. 
-
-            if (fSuccess && Pipe[i].cbRead != 0)
-            {
-                Pipe[i].fPendingIO = FALSE;
-                Pipe[i].dwState = WRITING_STATE;
-                continue;
-            }
-
-            // The read operation is still pending. 
-
-            dwErr = GetLastError();
-            if (!fSuccess && (dwErr == ERROR_IO_PENDING))
-            {
-                Pipe[i].fPendingIO = TRUE;
-                continue;
-            }
-
-            // An error occurred; disconnect from the client. 
-
-            DisconnectAndReconnect(i);
+        int cmpResult = strcmp(sendBuf, "exit");
+        if (cmpResult == 0) {
+            SetEvent(events[3 * INSTANCES]);
+            WaitForSingleObject(hThread, 5000);
+            std::cout << " main thread exit." << std::endl;
             break;
-
-            // WRITING_STATE: 
-            // The request was successfully read from the client. 
-            // Get the reply data and write it to the client. 
-
-        case WRITING_STATE:
-            GetAnswerToRequest(&Pipe[i]);
-
-            fSuccess = WriteFile(
-                Pipe[i].hPipeInst,
-                Pipe[i].chReply,
-                Pipe[i].cbToWrite,
-                &cbRet,
-                &Pipe[i].oOverlap);
-
-            // The write operation completed successfully. 
-
-            if (fSuccess && cbRet == Pipe[i].cbToWrite)
-            {
-                Pipe[i].fPendingIO = FALSE;
-                Pipe[i].dwState = READING_STATE;
-                continue;
-            }
-
-            // The write operation is still pending. 
-
-            dwErr = GetLastError();
-            if (!fSuccess && (dwErr == ERROR_IO_PENDING))
-            {
-                Pipe[i].fPendingIO = TRUE;
-                continue;
-            }
-
-            // An error occurred; disconnect from the client. 
-
-            DisconnectAndReconnect(i);
-            break;
-
-        default:
-        {
-            printf("Invalid pipe state.\n");
-            return 0;
         }
-        }
-    }
+    } while (true);
 
     return 0;
 }
 
-
-// DisconnectAndReconnect(DWORD) 
-// This function is called when an error occurs or when the client 
-// closes its handle to the pipe. Disconnect from this client, then 
-// call ConnectNamedPipe to wait for another client to connect. 
-
-VOID DisconnectAndReconnect(DWORD i)
-{
-    // Disconnect the pipe instance. 
-
-    if (!DisconnectNamedPipe(Pipe[i].hPipeInst))
-    {
-        printf("DisconnectNamedPipe failed with %d.\n", GetLastError());
-    }
-
-    // Call a subroutine to connect to the new client. 
-
-    Pipe[i].fPendingIO = ConnectToNewClient(
-        Pipe[i].hPipeInst,
-        &Pipe[i].oOverlap);
-
-    Pipe[i].dwState = Pipe[i].fPendingIO ?
-        CONNECTING_STATE : // still connecting 
-        READING_STATE;     // ready to read 
-}
-
-// ConnectToNewClient(HANDLE, LPOVERLAPPED) 
-// This function is called to start an overlapped connect operation. 
-// It returns TRUE if an operation is pending or FALSE if the 
-// connection has been completed. 
 
 BOOL ConnectToNewClient(HANDLE hPipe, LPOVERLAPPED lpo)
 {
@@ -355,11 +272,4 @@ BOOL ConnectToNewClient(HANDLE hPipe, LPOVERLAPPED lpo)
     }
 
     return fPendingIO;
-}
-
-VOID GetAnswerToRequest(LPPIPEINST pipe)
-{
-    _tprintf(TEXT("[%d] %s\n"), pipe->hPipeInst, pipe->chRequest);
-    StringCchCopy(pipe->chReply, BUFSIZE, TEXT("Default answer from server"));
-    pipe->cbToWrite = (lstrlen(pipe->chReply) + 1) * sizeof(TCHAR);
 }
