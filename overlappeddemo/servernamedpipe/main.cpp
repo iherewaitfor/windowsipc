@@ -113,6 +113,21 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
         }
         else if (waitIndex == 3 * index + 1) {
             //read done
+            if (pipeOverlappeds[waitIndex].Internal != 0) {
+                std::cout << "read failed. GetLastError:" << GetLastError() << std::endl;
+                ULONG clientProcessId = 0;
+                GetNamedPipeClientProcessId(pipeOverlappeds[waitIndex].handleFile, &clientProcessId);
+                std::cout << "read failed. GetLastError:" << GetLastError() << " disconnect the client of process:" << clientProcessId << std::endl;
+                DisconnectNamedPipe(pipeOverlappeds[waitIndex].handleFile); //读取错误，断开连接
+
+                PipeOverLapped* pConnectOverLapped = &pipeOverlappeds[waitIndex - 1];
+                ConnectToNewClient(pConnectOverLapped->handleFile, pConnectOverLapped); //重新等待连接
+                std::cout << "to connect to new client." <<std::endl;
+
+
+                ResetEvent(events[waitIndex]);
+                continue;
+            }
             std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
             // to do add the data to the read list;
             ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
@@ -130,6 +145,7 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
                 &pWriteOverLapped->cbToWrite,
                 pWriteOverLapped
             );
+
             ResetEvent(events[waitIndex]);
         }
         else {
