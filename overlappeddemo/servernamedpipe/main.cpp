@@ -5,6 +5,9 @@
 #include <iostream>
 
 #include <process.h>
+#include <list>
+#include <map>
+#include "cslock.h"
 
 #define INSTANCES 4 
 #define PIPE_TIMEOUT 5000
@@ -57,8 +60,12 @@ PipeOverLapped pipeOverlappeds[INSTANCES * 3];
 HANDLE events[INSTANCES*3 +1];
 
 //to do 
-// define an read array
+std::list<std::string> readMsgsList;
+CsLock readMsgsListLock;
+typedef std::list<std::string> MsgList;
+std::map<int, MsgList> msgMap; // processId, msgList
 // define an write array
+std::list<std::string> writeMsgList;
 
 // define an CS fro read array
 // define an CS for write array
@@ -130,6 +137,12 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
             }
             std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
             // to do add the data to the read list;
+            {
+                AutoCsLock scopLock(&readMsgsListLock);
+                std::string msg;
+                msg.assign(pipeOverlappeds[waitIndex].readBuff, pipeOverlappeds[waitIndex].InternalHigh);
+                readMsgsList.push_back(msg);
+            }
             ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
 
 
@@ -245,6 +258,17 @@ int _tmain(VOID)
             WaitForSingleObject(hThread, 5000);
             std::cout << " main thread exit." << std::endl;
             break;
+        }
+        
+        std::list<std::string> tempReadList;
+        {
+            AutoCsLock scopLock(&readMsgsListLock);
+            tempReadList.swap(readMsgsList);
+        }
+        // to do , process the recieved msgs;
+        while (!tempReadList.empty()) {
+            std::cout << tempReadList.front() << std::endl;
+            tempReadList.pop_front();
         }
     } while (true);
 
