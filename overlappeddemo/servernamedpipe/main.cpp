@@ -67,10 +67,8 @@ void dispatchMsgs();
 typedef std::list<std::string> MsgList;
 std::map<int, MsgList> msgMap; // processId, msgList
 // define an write array
-std::list<std::string> writeMsgList;
-
-// define an CS fro read array
-// define an CS for write array
+std::list<std::string> writeMsgsList;
+CsLock writeMsgsListLock;
 
 TCHAR sendBuf[BUFSIZE] = { 0 };
 
