@@ -279,68 +279,15 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
         }
         else if (waitIndex == 3 * index + 1) {
             //read done
-            if (pipeOverlappeds[waitIndex].Internal != 0) {
-                std::cout << "read failed. GetLastError:" << GetLastError() << std::endl;
-                ULONG clientProcessId = 0;
-                GetNamedPipeClientProcessId(pipeOverlappeds[waitIndex].handleFile, &clientProcessId);
-                std::cout << "read failed. GetLastError:" << GetLastError() << " disconnect the client of process:" << clientProcessId << std::endl;
-                DisconnectNamedPipe(pipeOverlappeds[waitIndex].handleFile); //读取错误，断开连接
-
-                PipeOverLapped* pConnectOverLapped = &pipeOverlappeds[waitIndex - 1];
-                ConnectToNewClient(pConnectOverLapped->handleFile, pConnectOverLapped); //重新等待连接
-                std::cout << "to connect to new client." << std::endl;
-
-
-                ResetEvent(events[waitIndex]);
+            if (!handleReadEvent(waitIndex)) {
                 continue;
             }
-            std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
-            // to do add the data to the read list;
-            {
-                AutoCsLock scopLock(readMsgsListLock);
-                std::string msg;
-                msg.assign(pipeOverlappeds[waitIndex].readBuff, pipeOverlappeds[waitIndex].InternalHigh);
-                readMsgsList.push_back(msg);
-            }
-            ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
-
-            ResetEvent(events[waitIndex]);
-            PipeOverLapped* pReadOverLapped = &pipeOverlappeds[waitIndex];
-            bool fSuccess = ReadFile(
-                pReadOverLapped->handleFile,
-                pReadOverLapped->readBuff,
-                BUFSIZE * sizeof(TCHAR),
-                &pReadOverLapped->cbRead,
-                pReadOverLapped);
         }
         else {
             //write done
-            ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
-            bWritting = false;
-            ResetEvent(events[waitIndex]);
-            PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[waitIndex];
-            do {
-                if (writeMsgsList.empty()) {
-                    break;
-                }
-                //没有在发送,则触发发送。
-                std::string msg;
-                {
-                    AutoCsLock scopeLock(writeMsgsListLock);
-                    msg = writeMsgsList.front();
-                    writeMsgsList.pop_front();
-                }
-                ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
-                memcpy(pipeOverlappeds[waitIndex].writeBuffer, msg.c_str(), msg.length());
-                pipeOverlappeds[waitIndex].cbToWrite = msg.length();
-                WriteFile(
-                    pipeOverlappeds[waitIndex].handleFile,                  // pipe handle 
-                    pipeOverlappeds[waitIndex].writeBuffer,             // message 
-                    pipeOverlappeds[waitIndex].cbToWrite,              // message length 
-                    &pipeOverlappeds[waitIndex].cbToWrite,             // bytes written 
-                    &pipeOverlappeds[waitIndex]);                  // overlapped 
-                bWritting = true;
-            } while (false);
+            if (!handleWriteEvent(waitIndex, bWritting)) {
+                break;
+            }
         }
     }
     std::cout << "worker thread exit" << std::endl;
@@ -384,5 +331,81 @@ bool handleNotEmptyEvent(int waitIndex, bool &bWritting) {
         bWritting = true;
     } while (false);
     ResetEvent(events[waitIndex]);
+    return true;
+}
+
+bool handleReadEvent(int waitIndex) {
+    if (pipeOverlappeds[waitIndex].Internal != 0) {
+        std::cout << "read failed. GetLastError:" << GetLastError() << std::endl;
+        ULONG clientProcessId = 0;
+        GetNamedPipeClientProcessId(pipeOverlappeds[waitIndex].handleFile, &clientProcessId);
+        std::cout << "read failed. GetLastError:" << GetLastError() << " disconnect the client of process:" << clientProcessId << std::endl;
+        DisconnectNamedPipe(pipeOverlappeds[waitIndex].handleFile); //读取错误，断开连接
+
+        PipeOverLapped* pConnectOverLapped = &pipeOverlappeds[waitIndex - 1];
+        ConnectToNewClient(pConnectOverLapped->handleFile, pConnectOverLapped); //重新等待连接
+        std::cout << "to connect to new client." << std::endl;
+
+
+        ResetEvent(events[waitIndex]);
+        return false;
+    }
+    std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
+    // to do add the data to the read list;
+    {
+        AutoCsLock scopLock(readMsgsListLock);
+        std::string msg;
+        msg.assign(pipeOverlappeds[waitIndex].readBuff, pipeOverlappeds[waitIndex].InternalHigh);
+        readMsgsList.push_back(msg);
+    }
+    ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
+
+    ResetEvent(events[waitIndex]);
+    PipeOverLapped* pReadOverLapped = &pipeOverlappeds[waitIndex];
+    bool fSuccess = ReadFile(
+        pReadOverLapped->handleFile,
+        pReadOverLapped->readBuff,
+        BUFSIZE * sizeof(TCHAR),
+        &pReadOverLapped->cbRead,
+        pReadOverLapped);
+    return true;
+}
+
+bool handleWriteEvent(int waitIndex, bool& bWritting) {
+    ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
+    bWritting = false;
+    ResetEvent(events[waitIndex]);
+    if (pipeOverlappeds[waitIndex].Internal != 0) {
+        std::cout << "write failed. GetLastError:" << GetLastError() << std::endl;
+
+        if (pipeOverlappeds[waitIndex].handleFile != 0) {
+            CloseHandle(pipeOverlappeds[waitIndex].handleFile);
+            pipeOverlappeds[waitIndex].handleFile = NULL;
+        }
+        return false;
+    }
+    PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[waitIndex];
+    do {
+        if (writeMsgsList.empty()) {
+            break;
+        }
+        //没有在发送,则触发发送。
+        std::string msg;
+        {
+            AutoCsLock scopeLock(writeMsgsListLock);
+            msg = writeMsgsList.front();
+            writeMsgsList.pop_front();
+        }
+        ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
+        memcpy(pipeOverlappeds[waitIndex].writeBuffer, msg.c_str(), msg.length());
+        pipeOverlappeds[waitIndex].cbToWrite = msg.length();
+        WriteFile(
+            pipeOverlappeds[waitIndex].handleFile,                  // pipe handle 
+            pipeOverlappeds[waitIndex].writeBuffer,             // message 
+            pipeOverlappeds[waitIndex].cbToWrite,              // message length 
+            &pipeOverlappeds[waitIndex].cbToWrite,             // bytes written 
+            &pipeOverlappeds[waitIndex]);                  // overlapped 
+        bWritting = true;
+    } while (false);
     return true;
 }
