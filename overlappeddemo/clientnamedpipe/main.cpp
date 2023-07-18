@@ -65,6 +65,7 @@ void dispatchMsgs();
 std::list<std::string> writeMsgsList;
 CsLock writeMsgsListLock;
 
+bool handlReadEvent(int waitIndex);
 unsigned int __stdcall ThreadOverlapped(PVOID pM);
  
 int _tmain(int argc, TCHAR *argv[]) 
@@ -263,30 +264,9 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
         DWORD index = waitIndex / 2;
         if (waitIndex == 2 * index) {
             //read done
-            if (pipeOverlappeds[waitIndex].Internal != 0) {
-                std::cout << "read failed. GetLastError:" << GetLastError() << std::endl;
-
-                CloseHandle(pipeOverlappeds[waitIndex].handleFile);
-                ResetEvent(events[waitIndex]);
+            if (!handlReadEvent(waitIndex)) {
                 break;
             }
-            std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
-            // to do add the data to the read list;
-            {
-                AutoCsLock scopLock(readMsgsListLock);
-                std::string msg;
-                msg.assign(pipeOverlappeds[waitIndex].readBuff, pipeOverlappeds[waitIndex].InternalHigh);
-                readMsgsList.push_back(msg);
-            }
-            ResetEvent(events[waitIndex]);
-
-            ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
-            ReadFile(
-                pipeOverlappeds[waitIndex].handleFile,
-                pipeOverlappeds[waitIndex].readBuff,
-                BUFSIZE * sizeof(TCHAR),
-                &pipeOverlappeds[waitIndex].cbRead,
-                &pipeOverlappeds[waitIndex]);
         }
         else {
             //write done
@@ -343,4 +323,32 @@ void dispatchMsgs() {
         std::cout << tempReadList.front() << std::endl;
         tempReadList.pop_front();
     }
+}
+
+bool handlReadEvent(int waitIndex) {
+    if (pipeOverlappeds[waitIndex].Internal != 0) {
+        std::cout << "read failed. GetLastError:" << GetLastError() << std::endl;
+
+        CloseHandle(pipeOverlappeds[waitIndex].handleFile);
+        ResetEvent(events[waitIndex]);
+        return false;
+    }
+    std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
+    // to do add the data to the read list;
+    {
+        AutoCsLock scopLock(readMsgsListLock);
+        std::string msg;
+        msg.assign(pipeOverlappeds[waitIndex].readBuff, pipeOverlappeds[waitIndex].InternalHigh);
+        readMsgsList.push_back(msg);
+    }
+    ResetEvent(events[waitIndex]);
+
+    ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
+    ReadFile(
+        pipeOverlappeds[waitIndex].handleFile,
+        pipeOverlappeds[waitIndex].readBuff,
+        BUFSIZE * sizeof(TCHAR),
+        &pipeOverlappeds[waitIndex].cbRead,
+        &pipeOverlappeds[waitIndex]);
+    return true;
 }
