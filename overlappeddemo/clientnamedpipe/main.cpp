@@ -107,7 +107,7 @@ int _tmain(int argc, TCHAR *argv[])
            AutoCsLock scopeLock(writeMsgsListLock);
            writeMsgsList.push_back(msg);
            if (writeMsgsList.size() == 1) {
-               SetEvent(events[2 * INSTANCES + 1]); // not empty
+               SetEvent(events[INSTANCES * 2 + 1]); // not empty
            }
        }
 
@@ -200,7 +200,7 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
         last_error;
         return -1;
     }
-    events[INSTANCES * 2+1] = hEvent;  //发送消息队列非空事件
+    events[INSTANCES * 2  + 1] = hEvent;  //发送消息队列非空事件
 
     ZeroMemory(pipeOverlappeds[0].readBuff, sizeof(pipeOverlappeds[0].readBuff));
     ReadFile(
@@ -245,14 +245,14 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
                     msg = writeMsgsList.front();
                     writeMsgsList.pop_front();
                 }
-                PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[2];
+                PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[1];
                 ZeroMemory(pWriteOverLapped->writeBuffer, sizeof(pWriteOverLapped->writeBuffer));
                 memcpy(pWriteOverLapped->writeBuffer, msg.c_str(), msg.length());
                 pWriteOverLapped->cbToWrite = msg.length();
                 WriteFile(
                     pWriteOverLapped->handleFile,                  // pipe handle 
                     pWriteOverLapped->writeBuffer,             // message 
-                    pWriteOverLapped->cbToWrite,              // message length 
+                    msg.length(),              // message length 
                     &pWriteOverLapped->cbToWrite,             // bytes written 
                     pWriteOverLapped);                  // overlapped 
             } while (false);
