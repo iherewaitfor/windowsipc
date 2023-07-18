@@ -69,6 +69,8 @@ bool handleNotEmptyEvent(int waitIndex, bool &bWritting);
 bool handleReadEvent(int waitIndex);
 bool handleWriteEvent(int waitIndex, bool &bWritting);
 unsigned int __stdcall ThreadOverlapped(PVOID pM);
+
+volatile bool g_mainThreadStop = false;
  
 int _tmain(int argc, TCHAR *argv[]) 
 {
@@ -83,7 +85,7 @@ int _tmain(int argc, TCHAR *argv[])
     DWORD  cbToWrite;
  ////test//////////////////////////////////////////////////////////////
    std::cout << "please input message to server.(input \"exit\" to exit)." << std::endl;
-   do {
+   while (!g_mainThreadStop){
        // Send a message to the pipe server. 
        ZeroMemory(sendBuf, BUFSIZE);
        char  ch;
@@ -115,7 +117,7 @@ int _tmain(int argc, TCHAR *argv[])
        }
        dispatchMsgs();
 
-   } while (true);
+   }
 
    printf("\n<End of message, press ENTER to terminate connection and exit>");
    _getch();
@@ -257,6 +259,7 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
             }
         }
     }
+    g_mainThreadStop = true;
     std::cout << "worker thread exit" << std::endl;
     return 0;
 }
