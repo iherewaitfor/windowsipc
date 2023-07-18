@@ -65,6 +65,7 @@ void dispatchMsgs();
 std::list<std::string> writeMsgsList;
 CsLock writeMsgsListLock;
 
+bool handleNotEmptyEvent(int waitIndex, bool bWritting);
 bool handleReadEvent(int waitIndex);
 bool handleWriteEvent(int waitIndex, bool &bWritting);
 unsigned int __stdcall ThreadOverlapped(PVOID pM);
@@ -237,29 +238,9 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
         }
         if (waitIndex == INSTANCES * 2 + 1) {
             //send msg list is not empty
-            do {
-                if (bWritting || writeMsgsList.empty()) {
-                    break;
-                }
-                //没有在发送,则触发发送。
-                std::string msg;
-                {
-                    AutoCsLock scopeLock(writeMsgsListLock);
-                    msg = writeMsgsList.front();
-                    writeMsgsList.pop_front();
-                }
-                PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[1];
-                ZeroMemory(pWriteOverLapped->writeBuffer, sizeof(pWriteOverLapped->writeBuffer));
-                memcpy(pWriteOverLapped->writeBuffer, msg.c_str(), msg.length());
-                pWriteOverLapped->cbToWrite = msg.length();
-                WriteFile(
-                    pWriteOverLapped->handleFile,                  // pipe handle 
-                    pWriteOverLapped->writeBuffer,             // message 
-                    msg.length(),              // message length 
-                    &pWriteOverLapped->cbToWrite,             // bytes written 
-                    pWriteOverLapped);                  // overlapped 
-            } while (false);
-            ResetEvent(events[waitIndex]);
+            if (!handleNotEmptyEvent(waitIndex, bWritting)) {
+                break;
+            }
             continue;
         }
         DWORD index = waitIndex / 2;
@@ -271,7 +252,9 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
         }
         else {
             //write done
-            handleWriteEvent(waitIndex, bWritting);
+            if (!handleWriteEvent(waitIndex, bWritting)) {
+                break;
+            }
         }
     }
     std::cout << "worker thread exit" << std::endl;
@@ -369,5 +352,32 @@ bool handleWriteEvent(int waitIndex, bool& bWritting) {
             &pipeOverlappeds[waitIndex]);                  // overlapped 
         bWritting = true;
     } while (false);
+    return true;
+}
+
+bool handleNotEmptyEvent(int waitIndex, bool bWritting) {
+    do {
+        if (bWritting || writeMsgsList.empty()) {
+            return false;
+        }
+        //没有在发送,则触发发送。
+        std::string msg;
+        {
+            AutoCsLock scopeLock(writeMsgsListLock);
+            msg = writeMsgsList.front();
+            writeMsgsList.pop_front();
+        }
+        PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[1];
+        ZeroMemory(pWriteOverLapped->writeBuffer, sizeof(pWriteOverLapped->writeBuffer));
+        memcpy(pWriteOverLapped->writeBuffer, msg.c_str(), msg.length());
+        pWriteOverLapped->cbToWrite = msg.length();
+        WriteFile(
+            pWriteOverLapped->handleFile,                  // pipe handle 
+            pWriteOverLapped->writeBuffer,             // message 
+            msg.length(),              // message length 
+            &pWriteOverLapped->cbToWrite,             // bytes written 
+            pWriteOverLapped);                  // overlapped 
+    } while (false);
+    ResetEvent(events[waitIndex]);
     return true;
 }
