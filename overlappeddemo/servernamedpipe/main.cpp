@@ -189,7 +189,7 @@ void dispatchMsgs() {
 
 unsigned int __stdcall ThreadOverlapped(PVOID pM)
 {
-    printf("beginThread 线程ID号为%4dn", GetCurrentThreadId());
+    printf("beginThread 线程ID号为%4d \n", GetCurrentThreadId());
 
     for (int i = 0; i < INSTANCES; i++) {
         ConnectToNewClient(pipeOverlappeds[i * 3].handleFile, &pipeOverlappeds[i * 3]);
