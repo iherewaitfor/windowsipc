@@ -72,6 +72,10 @@ TCHAR sendBuf[BUFSIZE] = { 0 };
 
 BOOL ConnectToNewClient(HANDLE hPipe, LPOVERLAPPED lpo);
 
+void handleConnectEvent(int waitIndex);
+bool handleNotEmptyEvent(int waitIndex, bool bWritting);
+bool handleReadEvent(int waitIndex);
+bool handleWriteEvent(int waitIndex, bool& bWritting);
 unsigned int __stdcall ThreadOverlapped(PVOID pM);
 //Ö÷º¯
 
@@ -292,16 +296,7 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
         DWORD index = waitIndex / 3;
         if (waitIndex == 3 * index) {
             //ConnectNamedPipe
-            // to read
-            PipeOverLapped* pReadOverLapped = &pipeOverlappeds[waitIndex + 1];
-            bool fSuccess = ReadFile(
-                pReadOverLapped->handleFile,
-                pReadOverLapped->readBuff,
-                BUFSIZE * sizeof(TCHAR),
-                &pReadOverLapped->cbRead,
-                pReadOverLapped);
-            ResetEvent(events[waitIndex]);
-
+            handleConnectEvent(waitIndex);
         }
         else if (waitIndex == 3 * index + 1) {
             //read done
@@ -372,4 +367,16 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
     std::cout << "worker thread exit" << std::endl;
 
     return 0;
+}
+
+void handleConnectEvent(int waitIndex) {
+    // to read
+    PipeOverLapped* pReadOverLapped = &pipeOverlappeds[waitIndex + 1];
+    bool fSuccess = ReadFile(
+        pReadOverLapped->handleFile,
+        pReadOverLapped->readBuff,
+        BUFSIZE * sizeof(TCHAR),
+        &pReadOverLapped->cbRead,
+        pReadOverLapped);
+    ResetEvent(events[waitIndex]);
 }
