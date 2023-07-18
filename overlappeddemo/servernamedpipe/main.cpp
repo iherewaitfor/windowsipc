@@ -9,7 +9,7 @@
 #include <map>
 #include "cslock.h"
 
-#define INSTANCES 4 
+#define INSTANCES 1 
 #define PIPE_TIMEOUT 5000
 #define BUFSIZE 4096
 
@@ -62,6 +62,8 @@ HANDLE events[INSTANCES*3 +1];
 //to do 
 std::list<std::string> readMsgsList;
 CsLock readMsgsListLock;
+void dispatchMsgs();
+
 typedef std::list<std::string> MsgList;
 std::map<int, MsgList> msgMap; // processId, msgList
 // define an write array
@@ -138,7 +140,7 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
             std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
             // to do add the data to the read list;
             {
-                AutoCsLock scopLock(&readMsgsListLock);
+                AutoCsLock scopLock(readMsgsListLock);
                 std::string msg;
                 msg.assign(pipeOverlappeds[waitIndex].readBuff, pipeOverlappeds[waitIndex].InternalHigh);
                 readMsgsList.push_back(msg);
@@ -259,17 +261,9 @@ int _tmain(VOID)
             std::cout << " main thread exit." << std::endl;
             break;
         }
-        
-        std::list<std::string> tempReadList;
-        {
-            AutoCsLock scopLock(&readMsgsListLock);
-            tempReadList.swap(readMsgsList);
-        }
-        // to do , process the recieved msgs;
-        while (!tempReadList.empty()) {
-            std::cout << tempReadList.front() << std::endl;
-            tempReadList.pop_front();
-        }
+
+        //分发消息。
+        dispatchMsgs();
     } while (true);
 
     return 0;
@@ -312,4 +306,20 @@ BOOL ConnectToNewClient(HANDLE hPipe, LPOVERLAPPED lpo)
     }
 
     return fPendingIO;
+}
+
+void dispatchMsgs() {
+    std::list<std::string> tempReadList;
+    {
+        //取出列表后，立即释放锁
+        AutoCsLock scopLock(readMsgsListLock);
+        tempReadList.swap(readMsgsList);
+    }
+    // to do , process the recieved msgs;
+    // dispatch msg to the listenning bussiness.
+    
+    while (!tempReadList.empty()) {
+        std::cout << tempReadList.front() << std::endl;
+        tempReadList.pop_front();
+    }
 }
