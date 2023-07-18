@@ -65,7 +65,8 @@ void dispatchMsgs();
 std::list<std::string> writeMsgsList;
 CsLock writeMsgsListLock;
 
-bool handlReadEvent(int waitIndex);
+bool handleReadEvent(int waitIndex);
+bool handleWriteEvent(int waitIndex, bool &bWritting);
 unsigned int __stdcall ThreadOverlapped(PVOID pM);
  
 int _tmain(int argc, TCHAR *argv[]) 
@@ -264,37 +265,13 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
         DWORD index = waitIndex / 2;
         if (waitIndex == 2 * index) {
             //read done
-            if (!handlReadEvent(waitIndex)) {
+            if (!handleReadEvent(waitIndex)) {
                 break;
             }
         }
         else {
             //write done
-            bWritting = false;
-            ResetEvent(events[waitIndex]);
-            PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[waitIndex];
-            do {
-                if (writeMsgsList.empty()) {
-                    break;
-                }
-                //没有在发送,则触发发送。
-                std::string msg;
-                {
-                    AutoCsLock scopeLock(writeMsgsListLock);
-                    msg = writeMsgsList.front();
-                    writeMsgsList.pop_front();
-                }
-                ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
-                memcpy(pipeOverlappeds[waitIndex].writeBuffer, msg.c_str(), msg.length());
-                pipeOverlappeds[waitIndex].cbToWrite = msg.length();
-                WriteFile(
-                    hPipe,                  // pipe handle 
-                    pipeOverlappeds[waitIndex].writeBuffer,             // message 
-                    pipeOverlappeds[waitIndex].cbToWrite,              // message length 
-                    &pipeOverlappeds[waitIndex].cbToWrite,             // bytes written 
-                    &pipeOverlappeds[waitIndex]);                  // overlapped 
-                bWritting = true;
-            } while (false);
+            handleWriteEvent(waitIndex, bWritting);
         }
     }
     std::cout << "worker thread exit" << std::endl;
@@ -325,11 +302,14 @@ void dispatchMsgs() {
     }
 }
 
-bool handlReadEvent(int waitIndex) {
+bool handleReadEvent(int waitIndex) {
     if (pipeOverlappeds[waitIndex].Internal != 0) {
         std::cout << "read failed. GetLastError:" << GetLastError() << std::endl;
 
-        CloseHandle(pipeOverlappeds[waitIndex].handleFile);
+        if (pipeOverlappeds[waitIndex].handleFile != 0) {
+            CloseHandle(pipeOverlappeds[waitIndex].handleFile);
+            pipeOverlappeds[waitIndex].handleFile = NULL;
+        }
         ResetEvent(events[waitIndex]);
         return false;
     }
@@ -350,5 +330,44 @@ bool handlReadEvent(int waitIndex) {
         BUFSIZE * sizeof(TCHAR),
         &pipeOverlappeds[waitIndex].cbRead,
         &pipeOverlappeds[waitIndex]);
+    return true;
+}
+
+
+bool handleWriteEvent(int waitIndex, bool& bWritting) {
+    bWritting = false;
+    ResetEvent(events[waitIndex]);
+    if (pipeOverlappeds[waitIndex].Internal != 0) {
+        std::cout << "write failed. GetLastError:" << GetLastError() << std::endl;
+
+        if (pipeOverlappeds[waitIndex].handleFile != 0) {
+            CloseHandle(pipeOverlappeds[waitIndex].handleFile);
+            pipeOverlappeds[waitIndex].handleFile = NULL;
+        }
+        return false;
+    }
+    PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[waitIndex];
+    do {
+        if (writeMsgsList.empty()) {
+            break;
+        }
+        //没有在发送,则触发发送。
+        std::string msg;
+        {
+            AutoCsLock scopeLock(writeMsgsListLock);
+            msg = writeMsgsList.front();
+            writeMsgsList.pop_front();
+        }
+        ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
+        memcpy(pipeOverlappeds[waitIndex].writeBuffer, msg.c_str(), msg.length());
+        pipeOverlappeds[waitIndex].cbToWrite = msg.length();
+        WriteFile(
+            pipeOverlappeds[waitIndex].handleFile,                  // pipe handle 
+            pipeOverlappeds[waitIndex].writeBuffer,             // message 
+            pipeOverlappeds[waitIndex].cbToWrite,              // message length 
+            &pipeOverlappeds[waitIndex].cbToWrite,             // bytes written 
+            &pipeOverlappeds[waitIndex]);                  // overlapped 
+        bWritting = true;
+    } while (false);
     return true;
 }
