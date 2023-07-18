@@ -55,7 +55,7 @@ HANDLE hEvents[INSTANCES];
 PipeOverLapped pipeOverlappeds[INSTANCES * 2];
 
 //最后一个是工作线程结束事件
-HANDLE events[INSTANCES * 2 + 1];
+HANDLE events[INSTANCES * 2 + 2];
 
 //to do
 std::list<std::string> readMsgsList;
@@ -138,7 +138,7 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
             0,              // no sharing 
             NULL,           // default security attributes
             OPEN_EXISTING,  // opens existing pipe 
-            0,              // default attributes 
+            FILE_FLAG_OVERLAPPED,              // default attributes 
             NULL);          // no template file 
 
       // Break if the pipe handle is valid. 
@@ -245,15 +245,16 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
                     msg = writeMsgsList.front();
                     writeMsgsList.pop_front();
                 }
-                ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
-                memcpy(pipeOverlappeds[waitIndex].writeBuffer, msg.c_str(), msg.length());
-                pipeOverlappeds[waitIndex].cbToWrite = msg.length();
+                PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[2];
+                ZeroMemory(pWriteOverLapped->writeBuffer, sizeof(pWriteOverLapped->writeBuffer));
+                memcpy(pWriteOverLapped->writeBuffer, msg.c_str(), msg.length());
+                pWriteOverLapped->cbToWrite = msg.length();
                 WriteFile(
-                    hPipe,                  // pipe handle 
-                    pipeOverlappeds[waitIndex].writeBuffer,             // message 
-                    pipeOverlappeds[waitIndex].cbToWrite,              // message length 
-                    &pipeOverlappeds[waitIndex].cbToWrite,             // bytes written 
-                    &pipeOverlappeds[waitIndex]);                  // overlapped 
+                    pWriteOverLapped->handleFile,                  // pipe handle 
+                    pWriteOverLapped->writeBuffer,             // message 
+                    pWriteOverLapped->cbToWrite,              // message length 
+                    &pWriteOverLapped->cbToWrite,             // bytes written 
+                    pWriteOverLapped);                  // overlapped 
             } while (false);
             ResetEvent(events[waitIndex]);
             continue;
