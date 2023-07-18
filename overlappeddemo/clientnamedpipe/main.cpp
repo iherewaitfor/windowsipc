@@ -110,6 +110,7 @@ int _tmain(int argc, TCHAR *argv[])
                SetEvent(events[INSTANCES * 2 + 1]); // not empty
            }
        }
+       dispatchMsgs();
 
    } while (true);
 
@@ -277,6 +278,8 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
                 msg.assign(pipeOverlappeds[waitIndex].readBuff, pipeOverlappeds[waitIndex].InternalHigh);
                 readMsgsList.push_back(msg);
             }
+            ResetEvent(events[waitIndex]);
+
             ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
             ReadFile(
                 pipeOverlappeds[waitIndex].handleFile,
@@ -284,11 +287,11 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
                 BUFSIZE * sizeof(TCHAR),
                 &pipeOverlappeds[waitIndex].cbRead,
                 &pipeOverlappeds[waitIndex]);
-            ResetEvent(events[waitIndex]);
         }
         else {
             //write done
             bWritting = false;
+            ResetEvent(events[waitIndex]);
             PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[waitIndex];
             do {
                 if (writeMsgsList.empty()) {
@@ -312,8 +315,6 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
                     &pipeOverlappeds[waitIndex]);                  // overlapped 
                 bWritting = true;
             } while (false);
-
-            ResetEvent(events[waitIndex]);
         }
     }
     std::cout << "worker thread exit" << std::endl;
@@ -326,4 +327,20 @@ void sendMsg(int index) {
     msg.assign(pipeOverlappeds[index].readBuff, pipeOverlappeds[index].InternalHigh);
     //memcpy()
     //readMsgsList.push_back(msg);
+}
+
+void dispatchMsgs() {
+    std::list<std::string> tempReadList;
+    {
+        //取出列表后，立即释放锁
+        AutoCsLock scopLock(readMsgsListLock);
+        tempReadList.swap(readMsgsList);
+    }
+    // to do , process the recieved msgs;
+    // dispatch msg to the listenning bussiness.
+    std::cout << " dispatchMsgs " << std::endl;
+    while (!tempReadList.empty()) {
+        std::cout << tempReadList.front() << std::endl;
+        tempReadList.pop_front();
+    }
 }
