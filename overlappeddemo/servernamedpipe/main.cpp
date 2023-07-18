@@ -57,7 +57,7 @@ HANDLE hEvents[INSTANCES];
 PipeOverLapped pipeOverlappeds[INSTANCES * 3];
 
 //最后一个是工作线程结束事件
-HANDLE events[INSTANCES*3 +1];
+HANDLE events[INSTANCES*3 +2];
 
 //to do 
 std::list<std::string> readMsgsList;
@@ -81,11 +81,12 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
     for (int i = 0; i < INSTANCES; i++) {
         ConnectToNewClient(pipeOverlappeds[i * 3].handleFile, &pipeOverlappeds[i * 3]);
     }
+    bool bWritting = false;
     DWORD dwWait;
     bool bStop = false;
     while (!bStop) {
         dwWait = WaitForMultipleObjects(
-            INSTANCES * 3 + 1,    // number of event objects 
+            INSTANCES * 3 + 2,    // number of event objects 
             events,      // array of event objects 
             FALSE,        // does not wait for all 
             INFINITE);    // waits indefinitely 
@@ -97,7 +98,35 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
             bStop = true;
             break;
         }
-        if (waitIndex > INSTANCES * 3) {
+        if (waitIndex == INSTANCES * 3+1) {
+            //send msg list is not empty
+            do {
+                if (bWritting || writeMsgsList.empty()) {
+                    break;
+                }
+                //没有在发送,则触发发送。
+                std::string msg;
+                {
+                    AutoCsLock scopeLock(writeMsgsListLock);
+                    msg = writeMsgsList.front();
+                    writeMsgsList.pop_front();
+                }
+                PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[2];
+                ZeroMemory(pWriteOverLapped->writeBuffer, sizeof(pWriteOverLapped->writeBuffer));
+                memcpy(pWriteOverLapped->writeBuffer, msg.c_str(), msg.length());
+                pWriteOverLapped->cbToWrite = msg.length();
+                WriteFile(
+                    pWriteOverLapped->handleFile,                  // pipe handle 
+                    pWriteOverLapped->writeBuffer,             // message 
+                    pWriteOverLapped->cbToWrite,              // message length 
+                    &pWriteOverLapped->cbToWrite,             // bytes written 
+                    pWriteOverLapped);                  // overlapped
+                bWritting = true;
+            } while (false);
+            ResetEvent(events[waitIndex]);
+            continue;
+        }
+        if (waitIndex > INSTANCES * 3 +1) {
             std::cout << "error waitIndex:" << waitIndex << "  error:" << GetLastError();
             bStop = true;
             break;
@@ -114,7 +143,6 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
                 BUFSIZE * sizeof(TCHAR),
                 &pReadOverLapped->cbRead,
                 pReadOverLapped);
-
             ResetEvent(events[waitIndex]);
 
         }
@@ -230,6 +258,13 @@ int _tmain(VOID)
         last_error;
     }
     events[INSTANCES * 3] = hEvent;  //工作线程停止事件
+    hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    if (!hEvent)
+    {
+        DWORD last_error = ::GetLastError();
+        last_error;
+    }
+    events[INSTANCES * 3+1] = hEvent;  //发送消息队列不为空事件
     HANDLE hThread;
     unsigned threadID;
 
