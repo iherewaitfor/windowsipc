@@ -56,13 +56,14 @@ HANDLE hEvents[INSTANCES];
 //WriteFile
 PipeOverLapped pipeOverlappeds[INSTANCES * 3];
 
-//最后一个是工作线程结束事件
+//最后的事件：
+//工作线程结束事件、待发送消息队列非空事件
 HANDLE events[INSTANCES*3 +2];
 
-//to do 
+
 std::list<std::string> readMsgsList;
 CsLock readMsgsListLock;
-void dispatchMsgs();
+void dispatchMsgs();//to do 
 
 // define an write array
 std::list<std::string> writeMsgsList;
@@ -72,73 +73,24 @@ TCHAR sendBuf[BUFSIZE] = { 0 };
 
 BOOL ConnectToNewClient(HANDLE hPipe, LPOVERLAPPED lpo);
 
+bool initNamedpipe();
+
 void handleConnectEvent(int waitIndex);
 bool handleNotEmptyEvent(int waitIndex, bool &bWritting);
 bool handleReadEvent(int waitIndex);
 bool handleWriteEvent(int waitIndex, bool& bWritting);
 unsigned int __stdcall ThreadOverlapped(PVOID pM);
-//主函
 
 int _tmain(VOID)
 {
-    DWORD i, dwWait, cbRet, dwErr;
-    BOOL fSuccess;
-    LPTSTR lpszPipename = TEXT("\\\\.\\pipe\\mynamedpipe");
-
-    // The initial loop creates several instances of a named pipe 
-    // along with an event object for each instance.  An 
-    // overlapped ConnectNamedPipe operation is started for 
-    // each instance. 
-
-    for (i = 0; i < INSTANCES; i++)
-    {
-        HANDLE pipeHandle = CreateNamedPipe(
-            lpszPipename,            // pipe name 
-            PIPE_ACCESS_DUPLEX |     // read/write access 
-            FILE_FLAG_OVERLAPPED,    // overlapped mode 
-            PIPE_TYPE_MESSAGE |      // message-type pipe 
-            PIPE_READMODE_MESSAGE |  // message-read mode 
-            PIPE_WAIT,               // blocking mode 
-            INSTANCES,               // number of instances 
-            BUFSIZE * sizeof(TCHAR),   // output buffer size 
-            BUFSIZE * sizeof(TCHAR),   // input buffer size 
-            PIPE_TIMEOUT,            // client time-out 
-            NULL);                   // default security attributes 
-
-        if (pipeHandle == INVALID_HANDLE_VALUE)
-        {
-            printf("CreateNamedPipe failed with %d.\n", GetLastError());
-            return 0;
-        }
-        int index = i * 3;
-        pipeOverlappeds[index].handleFile = pipeHandle;     //ConnectNamedPipe
-        pipeOverlappeds[index+1].handleFile = pipeHandle;   //ReadFile
-        pipeOverlappeds[index+2].handleFile = pipeHandle;   //WriteFile
-        events[index] = pipeOverlappeds[index].hEvent;
-        events[index+1] = pipeOverlappeds[index+1].hEvent;
-        events[index+2] = pipeOverlappeds[index+2].hEvent;
+    if (!initNamedpipe()) {
+        return -1;
     }
-    // Create a non-signalled, manual-reset event,
-    // thread stop event
-    HANDLE hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
-    if (!hEvent)
-    {
-        DWORD last_error = ::GetLastError();
-        last_error;
-    }
-    events[INSTANCES * 3] = hEvent;  //工作线程停止事件
-    hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
-    if (!hEvent)
-    {
-        DWORD last_error = ::GetLastError();
-        last_error;
-    }
-    events[INSTANCES * 3+1] = hEvent;  //发送消息队列不为空事件
+
     HANDLE hThread;
     unsigned threadID;
 
-    printf("Creating second thread...\n");
-
+    printf("Creating worker thread...\n");
     // Create the worker thread.
     hThread = (HANDLE)_beginthreadex(NULL, 0, &ThreadOverlapped, NULL, 0, &threadID);
 
@@ -153,8 +105,7 @@ int _tmain(VOID)
             }
             sendBuf[i++] = ch;
         }
-        DWORD cbToWrite = (lstrlen(sendBuf) + 1) * sizeof(TCHAR);
-        _tprintf(TEXT("process %d Sending %d byte message: \"%s\"\n"), GetCurrentProcessId(), cbToWrite, sendBuf);
+        DWORD cWrite = (lstrlen(sendBuf) + 1) * sizeof(TCHAR);
 
         int cmpResult = strcmp(sendBuf, "exit");
         if (cmpResult == 0) {
@@ -165,7 +116,7 @@ int _tmain(VOID)
         }
 
         std::string msg;
-        msg.assign(sendBuf, cbToWrite);
+        msg.assign(sendBuf, cWrite);
         {
             AutoCsLock scopeLock(writeMsgsListLock);
             writeMsgsList.push_back(msg);
@@ -174,7 +125,7 @@ int _tmain(VOID)
             }
         }
 
-        //分发已经收到的消息。
+        //模拟在消息循环时分发已经收到的消息。比如主线程可定时读取消息队列
         dispatchMsgs();
     } while (true);
 
@@ -238,7 +189,7 @@ void dispatchMsgs() {
 
 unsigned int __stdcall ThreadOverlapped(PVOID pM)
 {
-    printf("线程ID号为%4d的子线程说：Hello World\n", GetCurrentThreadId());
+    printf("beginThread 线程ID号为%4dn", GetCurrentThreadId());
 
     for (int i = 0; i < INSTANCES; i++) {
         ConnectToNewClient(pipeOverlappeds[i * 3].handleFile, &pipeOverlappeds[i * 3]);
@@ -407,5 +358,57 @@ bool handleWriteEvent(int waitIndex, bool& bWritting) {
             &pipeOverlappeds[waitIndex]);                  // overlapped 
         bWritting = true;
     } while (false);
+    return true;
+}
+
+bool initNamedpipe() {
+    LPTSTR lpszPipename = TEXT("\\\\.\\pipe\\mynamedpipe");
+    for (int i = 0; i < INSTANCES; i++)
+    {
+        HANDLE pipeHandle = CreateNamedPipe(
+            lpszPipename,            // pipe name 
+            PIPE_ACCESS_DUPLEX |     // read/write access 
+            FILE_FLAG_OVERLAPPED,    // overlapped mode 
+            PIPE_TYPE_MESSAGE |      // message-type pipe 
+            PIPE_READMODE_MESSAGE |  // message-read mode 
+            PIPE_WAIT,               // blocking mode 
+            INSTANCES,               // number of instances 
+            BUFSIZE * sizeof(TCHAR),   // output buffer size 
+            BUFSIZE * sizeof(TCHAR),   // input buffer size 
+            PIPE_TIMEOUT,            // client time-out 
+            NULL);                   // default security attributes 
+
+        if (pipeHandle == INVALID_HANDLE_VALUE)
+        {
+            printf("CreateNamedPipe failed with %d.\n", GetLastError());
+            return false;
+        }
+        int index = i * 3;
+        pipeOverlappeds[index].handleFile = pipeHandle;     //ConnectNamedPipe
+        pipeOverlappeds[index + 1].handleFile = pipeHandle;   //ReadFile
+        pipeOverlappeds[index + 2].handleFile = pipeHandle;   //WriteFile
+        events[index] = pipeOverlappeds[index].hEvent;
+        events[index + 1] = pipeOverlappeds[index + 1].hEvent;
+        events[index + 2] = pipeOverlappeds[index + 2].hEvent;
+    }
+    // Create a non-signalled, manual-reset event,
+    // thread stop event
+    HANDLE hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    if (!hEvent)
+    {
+        DWORD last_error = ::GetLastError();
+        last_error;
+        return false;
+    }
+    events[INSTANCES * 3] = hEvent;  //工作线程停止事件
+
+    hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    if (!hEvent)
+    {
+        DWORD last_error = ::GetLastError();
+        last_error;
+        return false;
+    }
+    events[INSTANCES * 3 + 1] = hEvent;  //发送消息队列不为空事件
     return true;
 }
