@@ -65,7 +65,7 @@ void dispatchMsgs();
 std::list<std::string> writeMsgsList;
 CsLock writeMsgsListLock;
 
-bool handleNotEmptyEvent(int waitIndex, bool bWritting);
+bool handleNotEmptyEvent(int waitIndex, bool &bWritting);
 bool handleReadEvent(int waitIndex);
 bool handleWriteEvent(int waitIndex, bool &bWritting);
 unsigned int __stdcall ThreadOverlapped(PVOID pM);
@@ -355,7 +355,7 @@ bool handleWriteEvent(int waitIndex, bool& bWritting) {
     return true;
 }
 
-bool handleNotEmptyEvent(int waitIndex, bool bWritting) {
+bool handleNotEmptyEvent(int waitIndex, bool &bWritting) {
     do {
         if (bWritting || writeMsgsList.empty()) {
             return false;
@@ -376,7 +376,8 @@ bool handleNotEmptyEvent(int waitIndex, bool bWritting) {
             pWriteOverLapped->writeBuffer,             // message 
             msg.length(),              // message length 
             &pWriteOverLapped->cbToWrite,             // bytes written 
-            pWriteOverLapped);                  // overlapped 
+            pWriteOverLapped);                  // overlapped
+        bWritting = true;
     } while (false);
     ResetEvent(events[waitIndex]);
     return true;
