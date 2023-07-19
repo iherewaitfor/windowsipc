@@ -86,12 +86,12 @@ int main(int argc, char** argv)
        Sleep(1000);
        bool needSetEvent = false;
        {
-           //std::string msg = "child msg ";
-           //AutoCsLock scop(writeMsgsListLock);
-           //writeMsgsList.push_back(msg);
-           //if (writeMsgsList.size() == 1) {
-           //    needSetEvent = true;
-           //}
+           std::string msg = "child msg ";
+           AutoCsLock scop(&writeMsgsListLock);
+           writeMsgsList.push_back(msg);
+           if (writeMsgsList.size() == 1) {
+               needSetEvent = true;
+           }
        }
        if (needSetEvent) {
            SetEvent(events[1]); // not empty
@@ -117,7 +117,7 @@ unsigned int __stdcall ThreadRead(PVOID pM) {
             continue;
         }
         {
-            AutoCsLock scopLock(readMsgsListLock);
+            AutoCsLock scopLock(&readMsgsListLock);
 
             msg.assign(chBuf, dwRead);
             readMsgsList.push_back(msg);
@@ -153,7 +153,7 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
 
         std::list<std::string> tempList;
         {
-            AutoCsLock scopLock(writeMsgsListLock);
+            AutoCsLock scopLock(&writeMsgsListLock);
             if (!writeMsgsList.empty()) {
                 tempList.swap(writeMsgsList);
             }
@@ -201,7 +201,7 @@ void dispatchMsgs() {
     std::list<std::string> tempReadList;
     {
         //取出列表后，立即释放锁
-        AutoCsLock scopLock(readMsgsListLock);
+        AutoCsLock scopLock(&readMsgsListLock);
         tempReadList.swap(readMsgsList);
     }
     // to do , process the recieved msgs;

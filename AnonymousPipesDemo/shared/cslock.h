@@ -17,15 +17,15 @@ private:
 
 class AutoCsLock {
 public:
-	explicit AutoCsLock(const CsLock &lock) {
-		cslock = lock;
-		cslock.lock();
+	explicit AutoCsLock(CsLock *lock) {
+		this->cslock = lock;
+		cslock->lock();
 	}
 	~AutoCsLock() {
-		cslock.unLock();
+		cslock->unLock();
 	}
 private:
-	CsLock cslock;
+	CsLock * cslock;
 };
 
 #endif // !1

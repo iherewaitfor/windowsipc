@@ -115,7 +115,7 @@ int _tmain(int argc, TCHAR* argv[])
         msg.append(sendBuf, cWrite);
         bool needSetEvent = false;
         {
-            AutoCsLock scopeLock(writeMsgsListLock);
+            AutoCsLock scopeLock(&writeMsgsListLock);
             writeMsgsList.push_back(msg);
             if (writeMsgsList.size() == 1) {
                 needSetEvent = true;
@@ -249,7 +249,7 @@ unsigned int __stdcall ThreadRead(PVOID pM) {
             continue;
         }
         {
-            AutoCsLock scopLock(readMsgsListLock);
+            AutoCsLock scopLock(&readMsgsListLock);
             
             msg.assign(chBuf, dwRead);
             readMsgsList.push_back(msg);
@@ -285,7 +285,7 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
         
         std::list<std::string> tempList;
         {
-            AutoCsLock scopLock(writeMsgsListLock);
+            AutoCsLock scopLock(&writeMsgsListLock);
             while (!writeMsgsList.empty()) {
 
                 tempList.push_back(writeMsgsList.front());
@@ -335,7 +335,7 @@ void dispatchMsgs() {
     std::list<std::string> tempReadList;
     {
         //取出列表后，立即释放锁
-        AutoCsLock scopLock(readMsgsListLock);
+        AutoCsLock scopLock(&readMsgsListLock);
         tempReadList.swap(readMsgsList);
     }
     // to do , process the recieved msgs;
