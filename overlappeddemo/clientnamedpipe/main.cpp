@@ -99,7 +99,6 @@ int _tmain(int argc, TCHAR *argv[])
 
        int cmpResult =  strcmp(sendBuf, "exit");
        if (cmpResult == 0) {
-
            SetEvent(events[2 * INSTANCES]);//exit
            WaitForSingleObject(hThread, 5000);
            break;
@@ -233,6 +232,12 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
             break;
         }
         if (waitIndex == INSTANCES * 2) { // exit
+            if (hPipe) {
+
+                FlushFileBuffers(hPipe);
+                CloseHandle(hPipe);
+                hPipe = NULL;
+            }
             bStop = true;
             break;
         }
