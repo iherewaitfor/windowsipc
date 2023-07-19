@@ -2,6 +2,11 @@
 #include <tchar.h>
 #include <stdio.h> 
 #include <strsafe.h>
+#include <process.h>
+#include <string>
+#include <list>
+#include <map>
+#include "cslock.h"
 
 #define BUFSIZE 4096 
  
@@ -16,7 +21,21 @@ void CreateChildProcess(void);
 void WriteToPipe(void); 
 void ReadFromPipe(void); 
 void ErrorExit(PTSTR); 
-#include <string>
+
+
+std::list<std::string> readMsgsList;
+CsLock readMsgsListLock;
+void dispatchMsgs();//to do 
+unsigned int __stdcall ThreadRead(PVOID pM);
+
+// define an write array
+std::list<std::string> writeMsgsList;
+CsLock writeMsgsListLock;
+//写线程事件
+//发送队列非空事件、线程退出事件
+HANDLE events[2];
+unsigned int __stdcall ThreadWrite(PVOID pM);
+
  
 int _tmain(int argc, TCHAR* argv[])
 {
