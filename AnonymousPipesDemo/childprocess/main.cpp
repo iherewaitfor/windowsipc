@@ -87,6 +87,7 @@ int main(int argc, char** argv)
        bool needSetEvent = false;
        {
            std::string msg = "child msg ";
+           msg.append(std::to_string(i++));
            AutoCsLock scop(&writeMsgsListLock);
            writeMsgsList.push_back(msg);
            if (writeMsgsList.size() == 1) {
@@ -96,7 +97,9 @@ int main(int argc, char** argv)
        if (needSetEvent) {
            SetEvent(events[1]); // not empty
        }
+       dispatchMsgs();
    } 
+   std::cout << "child Thread main exit." << std::endl;
    return 0;
 }
 
@@ -111,6 +114,7 @@ unsigned int __stdcall ThreadRead(PVOID pM) {
         if (!bSuccess) {
             std::cout << "child  ReadFile failed. GetLastError():" << GetLastError() << " hStdin:" << hStdin << std::endl;
             bStop = true;
+            g_mainThreadStop = true;
             break;
         }
         if (dwRead == 0) {
@@ -150,7 +154,6 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
     DWORD dwWait;
     bool bStop = false;
     while (!bStop) {
-
         std::list<std::string> tempList;
         {
             AutoCsLock scopLock(&writeMsgsListLock);
@@ -181,11 +184,13 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
         DWORD waitIndex = dwWait - WAIT_OBJECT_0;
         if (waitIndex > 1 || waitIndex < 0) {
             std::cout << "error waitIndex:" << waitIndex << "  error:" << GetLastError() << std::endl;
+            g_mainThreadStop = true;
             bStop = true;
             break;
         }
         if (waitIndex == 0) { // exit
             std::cout << " child waitIndex:" << 0 << "  exit event." << std::endl;
+            g_mainThreadStop = true;
             bStop = true;
             break;
         }
@@ -206,25 +211,25 @@ void dispatchMsgs() {
     }
     // to do , process the recieved msgs;
     // dispatch msg to the listenning bussiness.
-    std::cout << " dispatchMsgs " << std::endl;
+    std::cout << "child: dispatchMsgs " << std::endl;
     while (!tempReadList.empty()) {
         std::string msg;
         msg = tempReadList.front();
         std::cout << tempReadList.front() << std::endl;
         tempReadList.pop_front();
-        //if (msg.compare("childexit") == 1) {
-        //    g_mainThreadStop = true;
-        //    SetEvent(events[0]);//exit
-        //    if (hStdout) {
-        //        CloseHandle(hStdout);
-        //    }
-        //    if (hStdin) {
-        //        CloseHandle(hStdin);
-        //    }
+        if (msg.compare("childexit") == 0) {
+            g_mainThreadStop = true;
+            SetEvent(events[0]);//exit
+            if (hStdout) {
+                CloseHandle(hStdout);
+            }
+            if (hStdin) {
+                CloseHandle(hStdin);
+            }
 
-        //    WaitForSingleObject(hReadThread, 5000);
-        //    WaitForSingleObject(hWriteThread, 5000);
-        //    break;
-        //}
+            WaitForSingleObject(hReadThread, 5000);
+            WaitForSingleObject(hWriteThread, 5000);
+            break;
+        }
     }
 }
