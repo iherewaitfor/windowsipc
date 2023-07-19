@@ -49,8 +49,6 @@ struct  PipeOverLapped : public OVERLAPPED
     }
 };
 
-HANDLE hEvents[INSTANCES];
-
 //ConnectNamedPipe
 //ReadFile
 //WriteFile

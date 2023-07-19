@@ -48,8 +48,6 @@ struct  PipeOverLapped : public OVERLAPPED
     }
 };
 
-HANDLE hEvents[INSTANCES];
-
 //ReadFile
 //WriteFile
 PipeOverLapped pipeOverlappeds[INSTANCES * 2];
