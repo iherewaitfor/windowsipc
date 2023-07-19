@@ -7,6 +7,7 @@
 #include <list>
 #include <map>
 #include "cslock.h"
+#include <iostream>
 
 #define BUFSIZE 4096 
  
@@ -14,12 +15,8 @@ HANDLE g_hChildStd_IN_Rd = NULL;    //子进程读，父进程需要关闭。需要传给子进程。
 HANDLE g_hChildStd_IN_Wr = NULL;    //父进程写。
 HANDLE g_hChildStd_OUT_Rd = NULL;   //父进程读。
 HANDLE g_hChildStd_OUT_Wr = NULL;   //子进程写，父进程需要关闭。需要传给子进程。
-
-HANDLE g_hInputFile = NULL;
  
 void CreateChildProcess(void); 
-void WriteToPipe(void); 
-void ReadFromPipe(void); 
 void ErrorExit(PTSTR); 
 
 
@@ -73,48 +70,62 @@ int _tmain(int argc, TCHAR* argv[])
 
     CreateChildProcess();
 
-    // Get a handle to an input file for the parent. 
-    // This example assumes a plain text file and uses string output to verify data flow. 
 
-    TCHAR* fileName = argv[1];
-#ifndef UNICODE
-    std::string strPath;
-#else
-    std::wstring strPath;
-#endif // !UNICODE
-    if (argc == 1) {
-        //ErrorExit(TEXT("Please specify an input file.\n"));
-        TCHAR path[MAX_PATH];
-        ::GetModuleFileName(NULL, path, MAX_PATH);
-        strPath = path;
+    HANDLE hReadThread;
+    unsigned readThreadID = 0;
+    printf("Creating read thread...\n");
+    hReadThread = (HANDLE)_beginthreadex(NULL, 0, &ThreadRead, NULL, 0, &readThreadID);
+    
+    HANDLE hWriteThread;
+    unsigned writeThreadID = 0;
+    printf("Creating write thread...\n");
+    hWriteThread = (HANDLE)_beginthreadex(NULL, 0, &ThreadWrite, NULL, 0, &writeThreadID);
+    bool g_mainThreadStop = false;
+    TCHAR sendBuf[BUFSIZE] = { 0 };
+    DWORD  cWrite;
+    while (!g_mainThreadStop) {
+        // Send a message to the pipe server. 
+        ZeroMemory(sendBuf, BUFSIZE);
+        char  ch;
+        int i = 0;
+        while (std::cin >> std::noskipws >> ch) {
+            if (ch == '\n') {
+                break;
+            }
+            sendBuf[i++] = ch;
+        }
+        cWrite = (lstrlen(sendBuf) + 1) * sizeof(TCHAR);
 
-        size_t index = strPath.rfind(TEXT("\\"));
-        strPath = strPath.substr(0, index);
-        fileName = (TCHAR*)strPath.append(TEXT("\\fileforparenttoread.txt")).c_str();
+        int cmpResult = strcmp(sendBuf, "exit");
+        if (cmpResult == 0) {
+            SetEvent(events[0]);//exit
+            if (g_hChildStd_IN_Wr) {
+                CloseHandle(g_hChildStd_IN_Wr);
+            }
+            if (g_hChildStd_OUT_Rd) {
+                CloseHandle(g_hChildStd_OUT_Rd);
+            }
+            
+            WaitForSingleObject(hReadThread, 5000);
+            WaitForSingleObject(hWriteThread, 5000);
+            
+            break;
+        }
+        std::string msg = "";
+        msg.append(sendBuf, cWrite);
+        bool needSetEvent = false;
+        {
+            AutoCsLock scopeLock(writeMsgsListLock);
+            writeMsgsList.push_back(msg);
+            if (writeMsgsList.size() == 1) {
+                needSetEvent = true;
+            }
+        }
+        if (needSetEvent) {
+            SetEvent(events[1]); // not empty
+        }
+        dispatchMsgs();
     }
-   g_hInputFile = CreateFile(
-       fileName,
-       GENERIC_READ, 
-       0, 
-       NULL, 
-       OPEN_EXISTING, 
-       FILE_ATTRIBUTE_READONLY, 
-       NULL); 
-
-   if ( g_hInputFile == INVALID_HANDLE_VALUE ) 
-      ErrorExit(TEXT("CreateFile")); 
- 
-// Write to the pipe that is the standard input for a child process. 
-// Data is written to the pipe's buffers, so it is not necessary to wait
-// until the child process is running before writing data.
- 
-   WriteToPipe(); 
-   printf( "\n->Contents of %s written to child STDIN pipe.\n", argv[1]);
- 
-// Read from pipe that is the standard output for child process. 
- 
-   printf( "\n->Contents of child process STDOUT:\n\n");
-   ReadFromPipe(); 
 
    printf("\n->End of parent execution.\n");
 
@@ -149,10 +160,10 @@ void CreateChildProcess()
  
    ZeroMemory( &siStartInfo, sizeof(STARTUPINFO) );
    siStartInfo.cb = sizeof(STARTUPINFO); 
-   siStartInfo.hStdError = g_hChildStd_OUT_Wr;
-   siStartInfo.hStdOutput = g_hChildStd_OUT_Wr;
-   siStartInfo.hStdInput = g_hChildStd_IN_Rd;
-   siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+   //siStartInfo.hStdError = g_hChildStd_OUT_Wr;
+   //siStartInfo.hStdOutput = g_hChildStd_OUT_Wr;
+   //siStartInfo.hStdInput = g_hChildStd_IN_Rd;
+   //siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
  
 // Create the child process. 
     
@@ -187,51 +198,6 @@ void CreateChildProcess()
    }
 }
  
-void WriteToPipe(void) 
-
-// Read from a file and write its contents to the pipe for the child's STDIN.
-// Stop when there is no more data. 
-{ 
-   DWORD dwRead, dwWritten; 
-   CHAR chBuf[BUFSIZE];
-   BOOL bSuccess = FALSE;
- 
-   for (;;) 
-   { 
-      bSuccess = ReadFile(g_hInputFile, chBuf, BUFSIZE, &dwRead, NULL);
-      if ( ! bSuccess || dwRead == 0 ) break; 
-      
-      bSuccess = WriteFile(g_hChildStd_IN_Wr, chBuf, dwRead, &dwWritten, NULL);
-      if ( ! bSuccess ) break; 
-   } 
- 
-// Close the pipe handle so the child process stops reading. 
- 
-   if ( ! CloseHandle(g_hChildStd_IN_Wr) ) 
-      ErrorExit(TEXT("StdInWr CloseHandle")); 
-} 
- 
-void ReadFromPipe(void) 
-
-// Read output from the child process's pipe for STDOUT
-// and write to the parent process's pipe for STDOUT. 
-// Stop when there is no more data. 
-{ 
-   DWORD dwRead, dwWritten; 
-   CHAR chBuf[BUFSIZE]; 
-   BOOL bSuccess = FALSE;
-   HANDLE hParentStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-
-   for (;;) 
-   { 
-      bSuccess = ReadFile( g_hChildStd_OUT_Rd, chBuf, BUFSIZE, &dwRead, NULL);
-      if( ! bSuccess || dwRead == 0 ) break; 
-
-      bSuccess = WriteFile(hParentStdOut, chBuf, 
-                           dwRead, &dwWritten, NULL);
-      if (! bSuccess ) break; 
-   } 
-} 
  
 void ErrorExit(PTSTR lpszFunction) 
 
@@ -263,4 +229,120 @@ void ErrorExit(PTSTR lpszFunction)
     LocalFree(lpMsgBuf);
     LocalFree(lpDisplayBuf);
     ExitProcess(1);
+}
+
+unsigned int __stdcall ThreadRead(PVOID pM) {
+    bool bStop = false;
+    CHAR chBuf[BUFSIZE] = { 0 };
+    while (!bStop) {
+        DWORD dwRead;
+        BOOL bSuccess = FALSE;
+        HANDLE hParentStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+        bSuccess = ReadFile(g_hChildStd_OUT_Rd, chBuf, BUFSIZE, &dwRead, NULL);
+        std::string msg;
+        if (!bSuccess) {
+            std::cout << " ReadFile failed. GetLastError():" << GetLastError() << std::endl;
+            bStop = true;
+            break;
+        }
+        if (dwRead == 0) {
+            continue;
+        }
+        {
+            AutoCsLock scopLock(readMsgsListLock);
+            
+            msg.assign(chBuf, dwRead);
+            readMsgsList.push_back(msg);
+        }
+        std::cout << " read msg:" << msg.c_str() << std::endl;
+    }
+    std::cout << " Thread read exit." << std::endl;
+    return 0;
+}
+unsigned int __stdcall ThreadWrite(PVOID pM) {
+
+    HANDLE hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    if (!hEvent)
+    {
+        DWORD last_error = ::GetLastError();
+        last_error;
+        return 1;
+    }
+    events[0] = hEvent;  //工作线程停止事件
+
+    hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    if (!hEvent)
+    {
+        DWORD last_error = ::GetLastError();
+        last_error;
+        return 2;
+    }
+    events[1] = hEvent;
+
+    DWORD dwWait;
+    bool bStop = false;
+    while (!bStop) {
+        
+        std::list<std::string> tempList;
+        {
+            AutoCsLock scopLock(writeMsgsListLock);
+            while (!writeMsgsList.empty()) {
+
+                tempList.push_back(writeMsgsList.front());
+                writeMsgsList.pop_front();
+            }
+        }
+        bool writeOk = true;
+        while (!tempList.empty()) {
+            std::string msg = tempList.front();
+            tempList.pop_front();
+            DWORD dwWritten = 0;
+            writeOk = WriteFile(g_hChildStd_IN_Wr, msg.c_str(), msg.size(), &dwWritten, NULL);
+            if (!writeOk) {
+                break;
+            }
+        }
+        if (!writeOk) {
+            std::cout << "WriteFile failed. GetLastError:" << GetLastError() << " g_hChildStd_IN_Wr:" << g_hChildStd_IN_Wr << std::endl;
+            bStop = true;
+            break;
+        }
+        dwWait = WaitForMultipleObjects(
+            2,    // number of event objects 
+            events,      // array of event objects 
+            FALSE,        // does not wait for all 
+            INFINITE);    // waits indefinitely
+        DWORD waitIndex = dwWait - WAIT_OBJECT_0;
+        if (waitIndex > 1 || waitIndex < 0) {
+            std::cout << "error waitIndex:" << waitIndex << "  error:" << GetLastError();
+            bStop = true;
+            break;
+        }
+        if (waitIndex == 0) { // exit
+            std::cout << " waitIndex:" << 0 << "  exit event." << std::endl;
+            bStop = true;
+            break;
+        }
+        if (waitIndex == 1) { // list not empty
+            continue;
+        }
+    }
+    std::cout << " Thread wirte exit." << std::endl;
+    return 0;
+}
+
+void dispatchMsgs() {
+    std::list<std::string> tempReadList;
+    {
+        //取出列表后，立即释放锁
+        AutoCsLock scopLock(readMsgsListLock);
+        tempReadList.swap(readMsgsList);
+    }
+    // to do , process the recieved msgs;
+    // dispatch msg to the listenning bussiness.
+    std::cout << " dispatchMsgs " << std::endl;
+    while (!tempReadList.empty()) {
+        std::cout << tempReadList.front() << std::endl;
+        tempReadList.pop_front();
+    }
 }
