@@ -27,6 +27,7 @@ HANDLE hStdout = INVALID_HANDLE_VALUE;
 volatile bool g_mainThreadStop = false;
 HANDLE hReadThread;
 HANDLE hWriteThread;
+volatile bool g_bWriteThreadStop = false;
  
 int main(int argc, char** argv) 
 { 
@@ -88,7 +89,7 @@ int main(int argc, char** argv)
        {
            std::string msg = "child msg ";
            msg.append(std::to_string(i++));
-           AutoCsLock scop(&writeMsgsListLock);
+           AutoCsLock scop(writeMsgsListLock);
            writeMsgsList.push_back(msg);
            if (writeMsgsList.size() == 1) {
                needSetEvent = true;
@@ -99,6 +100,8 @@ int main(int argc, char** argv)
        }
        dispatchMsgs();
    } 
+   WaitForSingleObject(hReadThread, 5000000);
+   WaitForSingleObject(hWriteThread, 5000000);
    std::cout << "child Thread main exit." << std::endl;
    return 0;
 }
@@ -114,6 +117,7 @@ unsigned int __stdcall ThreadRead(PVOID pM) {
         if (!bSuccess) {
             std::cout << "child  ReadFile failed. GetLastError():" << GetLastError() << " hStdin:" << hStdin << std::endl;
             bStop = true;
+            g_bWriteThreadStop = true;
             g_mainThreadStop = true;
             break;
         }
@@ -121,7 +125,7 @@ unsigned int __stdcall ThreadRead(PVOID pM) {
             continue;
         }
         {
-            AutoCsLock scopLock(&readMsgsListLock);
+            AutoCsLock scopLock(readMsgsListLock);
 
             msg.assign(chBuf, dwRead);
             readMsgsList.push_back(msg);
@@ -152,11 +156,10 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
     events[1] = hEvent;
 
     DWORD dwWait;
-    bool bStop = false;
-    while (!bStop) {
+    while (!g_bWriteThreadStop) {
         std::list<std::string> tempList;
         {
-            AutoCsLock scopLock(&writeMsgsListLock);
+            AutoCsLock scopLock(writeMsgsListLock);
             if (!writeMsgsList.empty()) {
                 tempList.swap(writeMsgsList);
             }
@@ -173,7 +176,7 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
         }
         if (!writeOk) {
             std::cout << "Child WriteFile failed. GetLastError:" << GetLastError() << " hStdout:" << hStdout << std::endl;
-            bStop = true;
+            g_bWriteThreadStop = true;
             break;
         }
         dwWait = WaitForMultipleObjects(
@@ -185,13 +188,16 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
         if (waitIndex > 1 || waitIndex < 0) {
             std::cout << "error waitIndex:" << waitIndex << "  error:" << GetLastError() << std::endl;
             g_mainThreadStop = true;
-            bStop = true;
+            g_bWriteThreadStop = true;
             break;
         }
         if (waitIndex == 0) { // exit
             std::cout << " child waitIndex:" << 0 << "  exit event." << std::endl;
+            if (hStdout) {
+                FlushFileBuffers(hStdout);
+            }
             g_mainThreadStop = true;
-            bStop = true;
+            g_bWriteThreadStop = true;
             break;
         }
         if (waitIndex == 1) { // list not empty
@@ -206,7 +212,7 @@ void dispatchMsgs() {
     std::list<std::string> tempReadList;
     {
         //取出列表后，立即释放锁
-        AutoCsLock scopLock(&readMsgsListLock);
+        AutoCsLock scopLock(readMsgsListLock);
         tempReadList.swap(readMsgsList);
     }
     // to do , process the recieved msgs;
@@ -217,7 +223,8 @@ void dispatchMsgs() {
         msg = tempReadList.front();
         std::cout << tempReadList.front() << std::endl;
         tempReadList.pop_front();
-        if (msg.compare("childexit") == 0) {
+        
+        if (strcmp(msg.c_str(), "childexit") == 0) {
             g_mainThreadStop = true;
             SetEvent(events[0]);//exit
             if (hStdout) {

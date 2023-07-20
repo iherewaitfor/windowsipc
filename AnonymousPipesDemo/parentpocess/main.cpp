@@ -33,7 +33,9 @@ CsLock writeMsgsListLock;
 HANDLE events[2];
 unsigned int __stdcall ThreadWrite(PVOID pM);
 
- 
+volatile bool g_mainThreadStop = false;
+PROCESS_INFORMATION piProcInfo;
+
 int _tmain(int argc, TCHAR* argv[])
 {
     SECURITY_ATTRIBUTES saAttr;
@@ -70,7 +72,6 @@ int _tmain(int argc, TCHAR* argv[])
 
     CreateChildProcess();
 
-
     HANDLE hReadThread;
     unsigned readThreadID = 0;
     printf("Creating read thread...\n");
@@ -80,7 +81,7 @@ int _tmain(int argc, TCHAR* argv[])
     unsigned writeThreadID = 0;
     printf("Creating write thread...\n");
     hWriteThread = (HANDLE)_beginthreadex(NULL, 0, &ThreadWrite, NULL, 0, &writeThreadID);
-    bool g_mainThreadStop = false;
+
     TCHAR sendBuf[BUFSIZE] = { 0 };
     DWORD  cWrite;
     while (!g_mainThreadStop) {
@@ -98,24 +99,29 @@ int _tmain(int argc, TCHAR* argv[])
 
         int cmpResult = strcmp(sendBuf, "exit");
         if (cmpResult == 0) {
-            SetEvent(events[0]);//exit
             if (g_hChildStd_IN_Wr) {
                 CloseHandle(g_hChildStd_IN_Wr);
             }
+            SetEvent(events[0]);//exit
             if (g_hChildStd_OUT_Rd) {
                 CloseHandle(g_hChildStd_OUT_Rd);
             }
-            
             WaitForSingleObject(hReadThread, 5000);
             WaitForSingleObject(hWriteThread, 5000);
-            
             break;
+        }
+        if (strcmp(sendBuf, "childexit") == 0) {
+            //mack child read failed. make child read thread exit
+            if (g_hChildStd_IN_Wr) {
+                FlushFileBuffers(g_hChildStd_IN_Wr);
+                CloseHandle(g_hChildStd_IN_Wr);
+            }
         }
         std::string msg = "";
         msg.append(sendBuf, cWrite);
         bool needSetEvent = false;
         {
-            AutoCsLock scopeLock(&writeMsgsListLock);
+            AutoCsLock scopeLock(writeMsgsListLock);
             writeMsgsList.push_back(msg);
             if (writeMsgsList.size() == 1) {
                 needSetEvent = true;
@@ -126,6 +132,7 @@ int _tmain(int argc, TCHAR* argv[])
         }
         dispatchMsgs();
     }
+    WaitForSingleObject(piProcInfo.hProcess, 50000);
 
    printf("\n->End of parent execution.\n");
 
@@ -147,7 +154,7 @@ void CreateChildProcess()
     strCmdLine.append(std::to_string((int)g_hChildStd_IN_Rd));
    //TCHAR szCmdline[]=TEXT("child");
    TCHAR *szCmdline = (TCHAR*)strCmdLine.c_str();
-   PROCESS_INFORMATION piProcInfo; 
+   //PROCESS_INFORMATION piProcInfo; 
    STARTUPINFO siStartInfo;
    BOOL bSuccess = FALSE; 
  
@@ -242,6 +249,7 @@ unsigned int __stdcall ThreadRead(PVOID pM) {
         std::string msg;
         if (!bSuccess) {
             std::cout << " ReadFile failed. GetLastError():" << GetLastError() << std::endl;
+            g_mainThreadStop = true;
             bStop = true;
             break;
         }
@@ -249,7 +257,7 @@ unsigned int __stdcall ThreadRead(PVOID pM) {
             continue;
         }
         {
-            AutoCsLock scopLock(&readMsgsListLock);
+            AutoCsLock scopLock(readMsgsListLock);
             
             msg.assign(chBuf, dwRead);
             readMsgsList.push_back(msg);
@@ -285,7 +293,7 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
         
         std::list<std::string> tempList;
         {
-            AutoCsLock scopLock(&writeMsgsListLock);
+            AutoCsLock scopLock(writeMsgsListLock);
             while (!writeMsgsList.empty()) {
 
                 tempList.push_back(writeMsgsList.front());
@@ -304,6 +312,7 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
         }
         if (!writeOk) {
             std::cout << "WriteFile failed. GetLastError:" << GetLastError() << " g_hChildStd_IN_Wr:" << g_hChildStd_IN_Wr << std::endl;
+            g_mainThreadStop = true;
             bStop = true;
             break;
         }
@@ -335,7 +344,7 @@ void dispatchMsgs() {
     std::list<std::string> tempReadList;
     {
         //取出列表后，立即释放锁
-        AutoCsLock scopLock(&readMsgsListLock);
+        AutoCsLock scopLock(readMsgsListLock);
         tempReadList.swap(readMsgsList);
     }
     // to do , process the recieved msgs;
