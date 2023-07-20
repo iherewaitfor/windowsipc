@@ -106,8 +106,6 @@ int _tmain(int argc, TCHAR* argv[])
             if (g_hChildStd_OUT_Rd) {
                 CloseHandle(g_hChildStd_OUT_Rd);
             }
-            WaitForSingleObject(hReadThread, 5000);
-            WaitForSingleObject(hWriteThread, 5000);
             break;
         }
         if (strcmp(sendBuf, "childexit") == 0) {
@@ -132,6 +130,9 @@ int _tmain(int argc, TCHAR* argv[])
         }
         dispatchMsgs();
     }
+
+    WaitForSingleObject(hReadThread, 5000);
+    WaitForSingleObject(hWriteThread, 5000);
     WaitForSingleObject(piProcInfo.hProcess, 50000);
 
    printf("\n->End of parent execution.\n");
