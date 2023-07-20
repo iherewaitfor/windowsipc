@@ -10,6 +10,11 @@ public:
 	~CsLock();
 	void lock();
 	void unLock();
+private:
+	//disable copy
+	CsLock(const CsLock& lock);
+	const CsLock&  operator = (const CsLock& lock);
+
 
 private:
 	CRITICAL_SECTION cs;
@@ -17,15 +22,18 @@ private:
 
 class AutoCsLock {
 public:
-	explicit AutoCsLock(const CsLock &lock) {
-		cslock = lock;
+	explicit AutoCsLock(CsLock &lock):cslock(lock) {
 		cslock.lock();
 	}
 	~AutoCsLock() {
 		cslock.unLock();
 	}
 private:
-	CsLock cslock;
+	//disable copy
+	AutoCsLock(const AutoCsLock& autolock);
+	const AutoCsLock& operator = (const AutoCsLock& autolock);
+private:
+	CsLock& cslock;
 };
 
 #endif // !1
