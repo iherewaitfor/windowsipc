@@ -231,9 +231,11 @@ void dispatchMsgs() {
             SetEvent(events[0]);//exit
             if (hStdout) {
                 CloseHandle(hStdout);
+                hStdout = NULL;
             }
             if (hStdin) {
                 CloseHandle(hStdin);
+                hStdin = NULL;
             }
 
             WaitForSingleObject(hReadThread, 5000);

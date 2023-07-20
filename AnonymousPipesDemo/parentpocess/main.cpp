@@ -99,20 +99,24 @@ int _tmain(int argc, TCHAR* argv[])
 
         int cmpResult = strcmp(sendBuf, "exit");
         if (cmpResult == 0) {
+            //make child read failed. make child read thread exit
             if (g_hChildStd_IN_Wr) {
                 CloseHandle(g_hChildStd_IN_Wr);
+                g_hChildStd_IN_Wr = NULL;
             }
             SetEvent(events[0]);//exit
             if (g_hChildStd_OUT_Rd) {
                 CloseHandle(g_hChildStd_OUT_Rd);
+                g_hChildStd_OUT_Rd = NULL;
             }
             break;
         }
         if (strcmp(sendBuf, "childexit") == 0) {
-            //mack child read failed. make child read thread exit
+            //make child read failed. make child read thread exit
             if (g_hChildStd_IN_Wr) {
                 FlushFileBuffers(g_hChildStd_IN_Wr);
                 CloseHandle(g_hChildStd_IN_Wr);
+                g_hChildStd_IN_Wr = NULL;
             }
         }
         std::string msg = "";
@@ -312,6 +316,8 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
             }
         }
         if (!writeOk) {
+            //write failed, set the handle to invalid.
+            //g_hChildStd_IN_Wr = INVALID_HANDLE_VALUE;
             std::cout << "WriteFile failed. GetLastError:" << GetLastError() << " g_hChildStd_IN_Wr:" << g_hChildStd_IN_Wr << std::endl;
             g_mainThreadStop = true;
             bStop = true;
@@ -339,7 +345,7 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
             continue;
         }
     }
-    std::cout << " Thread wirte exit." << std::endl;
+    std::cout << " Thread write exit." << std::endl;
     return 0;
 }
 
@@ -354,7 +360,7 @@ void dispatchMsgs() {
     // dispatch msg to the listenning bussiness.
     std::cout << " dispatchMsgs " << std::endl;
     while (!tempReadList.empty()) {
-        std::cout << tempReadList.front() << std::endl;
+     //   std::cout << tempReadList.front() << std::endl;
         tempReadList.pop_front();
     }
 }
