@@ -156,8 +156,8 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
     events[1] = hEvent;
 
     DWORD dwWait;
+    std::list<std::string> tempList;
     while (!g_bWriteThreadStop) {
-        std::list<std::string> tempList;
         {
             AutoCsLock scopLock(writeMsgsListLock);
             if (!writeMsgsList.empty()) {
@@ -198,9 +198,11 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
             }
             g_mainThreadStop = true;
             g_bWriteThreadStop = true;
+            ResetEvent(events[0]);
             break;
         }
         if (waitIndex == 1) { // list not empty
+            ResetEvent(events[1]);
             continue;
         }
     }

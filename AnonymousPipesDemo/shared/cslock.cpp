@@ -1,6 +1,7 @@
 #include "cslock.h"
 CsLock::CsLock() {
 	InitializeCriticalSectionAndSpinCount(&cs, 0x00000400);
+	//InitializeCriticalSection(&cs);
 }
 CsLock::~CsLock() {
 	DeleteCriticalSection(&cs);

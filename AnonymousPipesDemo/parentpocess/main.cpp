@@ -330,9 +330,11 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
         if (waitIndex == 0) { // exit
             std::cout << " waitIndex:" << 0 << "  exit event." << std::endl;
             bStop = true;
+            ResetEvent(events[0]);
             break;
         }
         if (waitIndex == 1) { // list not empty
+            ResetEvent(events[1]);
             continue;
         }
     }
