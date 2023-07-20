@@ -96,7 +96,6 @@ int _tmain(int argc, TCHAR* argv[])
             sendBuf[i++] = ch;
         }
         cWrite = (lstrlen(sendBuf) + 1) * sizeof(TCHAR);
-
         int cmpResult = strcmp(sendBuf, "exit");
         if (cmpResult == 0) {
             //make child read failed. make child read thread exit
@@ -118,6 +117,8 @@ int _tmain(int argc, TCHAR* argv[])
                 CloseHandle(g_hChildStd_IN_Wr);
                 g_hChildStd_IN_Wr = NULL;
             }
+            SetEvent(events[0]);//exit event . make write thread  exit.
+            break;
         }
         std::string msg = "";
         msg.append(sendBuf, cWrite);
@@ -141,6 +142,7 @@ int _tmain(int argc, TCHAR* argv[])
 
    printf("\n->End of parent execution.\n");
 
+   std::cout << " Thread main exit. " << GetTickCount() << std::endl;
 // The remaining open handles are cleaned up when this process terminates. 
 // To avoid resource leaks in a larger application, close handles explicitly. 
 
@@ -269,7 +271,7 @@ unsigned int __stdcall ThreadRead(PVOID pM) {
         }
         std::cout << " read msg:" << msg.c_str() << std::endl;
     }
-    std::cout << " Thread read exit." << std::endl;
+    std::cout << " Thread read exit. " << GetTickCount() << std::endl;
     return 0;
 }
 unsigned int __stdcall ThreadWrite(PVOID pM) {
@@ -293,8 +295,7 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
     events[1] = hEvent;
 
     DWORD dwWait;
-    bool bStop = false;
-    while (!bStop) {
+    while (true) {
         
         std::list<std::string> tempList;
         {
@@ -316,11 +317,8 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
             }
         }
         if (!writeOk) {
-            //write failed, set the handle to invalid.
-            //g_hChildStd_IN_Wr = INVALID_HANDLE_VALUE;
             std::cout << "WriteFile failed. GetLastError:" << GetLastError() << " g_hChildStd_IN_Wr:" << g_hChildStd_IN_Wr << std::endl;
             g_mainThreadStop = true;
-            bStop = true;
             break;
         }
         dwWait = WaitForMultipleObjects(
@@ -331,12 +329,10 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
         DWORD waitIndex = dwWait - WAIT_OBJECT_0;
         if (waitIndex > 1 || waitIndex < 0) {
             std::cout << "error waitIndex:" << waitIndex << "  error:" << GetLastError();
-            bStop = true;
             break;
         }
         if (waitIndex == 0) { // exit
             std::cout << " waitIndex:" << 0 << "  exit event." << std::endl;
-            bStop = true;
             ResetEvent(events[0]);
             break;
         }
@@ -345,7 +341,7 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
             continue;
         }
     }
-    std::cout << " Thread write exit." << std::endl;
+    std::cout << " Thread write exit." << GetTickCount() << std::endl;
     return 0;
 }
 

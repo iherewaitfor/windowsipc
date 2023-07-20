@@ -102,7 +102,7 @@ int main(int argc, char** argv)
    } 
    WaitForSingleObject(hReadThread, 5000000);
    WaitForSingleObject(hWriteThread, 5000000);
-   std::cout << "child Thread main exit." << std::endl;
+   std::cout << "child Thread main exit." << GetTickCount() << std::endl;
    return 0;
 }
 
@@ -132,7 +132,7 @@ unsigned int __stdcall ThreadRead(PVOID pM) {
         }
         std::cout << "child read msg:" << msg.c_str() << std::endl;
     }
-    std::cout << "child Thread read exit." << std::endl;
+    std::cout << "child Thread read exit." << GetTickCount() << std::endl;
     return 0;
 }
 unsigned int __stdcall ThreadWrite(PVOID pM) {
@@ -206,7 +206,7 @@ unsigned int __stdcall ThreadWrite(PVOID pM) {
             continue;
         }
     }
-    std::cout << "child Thread wirte exit." << std::endl;
+    std::cout << "child Thread wirte exit." << GetTickCount() << std::endl;
     return 0;
 }
 
