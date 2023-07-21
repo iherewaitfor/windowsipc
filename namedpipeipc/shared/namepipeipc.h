@@ -45,7 +45,7 @@ struct  PipeOverLapped : public OVERLAPPED
 
 enum NamedPipeType {
 	TYPE_SERVER = 0,
-	TYPE_USER =1
+	TYPE_CLIENT =1
 };
 class NamedPipeIpc {
 public:
@@ -70,6 +70,7 @@ public:
     //最后的事件：
     //工作线程结束事件、待发送消息队列非空事件
     HANDLE events[3 + 2];
+    HANDLE m_hClientPipe;
 private:
     bool initNamedpipeServer();
     bool initNamedpipeClient();
@@ -89,6 +90,8 @@ private:
     std::string m_pipeName;
     HANDLE m_hThread;
     unsigned m_threadID;
+
+
 };
 #endif // 
 

@@ -1,11 +1,14 @@
 #include "namepipeipc.h"
 #include <process.h>
 #include <iostream>
+#include <stdio.h>
+#include <Windows.h>
 
 #define PIPE_TIMEOUT 5000
 #define INSTANCES 1 
 
 unsigned int __stdcall ThreadOverlappedServer(PVOID pThis);
+unsigned int __stdcall ThreadOverlappedClient(PVOID pThis);
 
 NamedPipeIpc::NamedPipeIpc(const std::string& namePipe, NamedPipeType type):m_pipeName(namePipe), m_type(type){
 
@@ -27,7 +30,94 @@ bool NamedPipeIpc::init() {
 }
 
 bool NamedPipeIpc::initNamedpipeClient() {
-    return false;
+    HANDLE m_hClientPipe;
+    BOOL   fSuccess = FALSE;
+
+    // Try to open a named pipe; wait for it, if necessary. 
+
+    while (1)
+    {
+        m_hClientPipe = CreateFile(
+            this->m_pipeName.c_str(),   // pipe name 
+            GENERIC_READ |  // read and write access 
+            GENERIC_WRITE,
+            0,              // no sharing 
+            NULL,           // default security attributes
+            OPEN_EXISTING,  // opens existing pipe 
+            FILE_FLAG_OVERLAPPED,              // default attributes 
+            NULL);          // no template file 
+
+      // Break if the pipe handle is valid. 
+
+        if (m_hClientPipe != INVALID_HANDLE_VALUE)
+            break;
+
+        // Exit if an error other than ERROR_PIPE_BUSY occurs. 
+
+        if (GetLastError() != ERROR_PIPE_BUSY)
+        {
+            printf(TEXT("Could not open pipe. GLE=%d\n"), GetLastError());
+            return false;
+        }
+
+        // All pipe instances are busy, so wait for 20 seconds. 
+
+        if (!WaitNamedPipe(this->m_pipeName.c_str(), 20000))
+        {
+            printf("Could not open pipe: 20 second wait timed out.");
+            return false;
+        }
+    }
+    DWORD dwMode = PIPE_READMODE_MESSAGE;
+    fSuccess = SetNamedPipeHandleState(
+        m_hClientPipe,    // pipe handle 
+        &dwMode,  // new pipe mode 
+        NULL,     // don't set maximum bytes 
+        NULL);    // don't set maximum time 
+    if (!fSuccess)
+    {
+        printf(TEXT("SetNamedPipeHandleState failed. GLE=%d\n"), GetLastError());
+        return false;
+    }
+
+    {
+        int index = 1;
+        pipeOverlappeds[index].handleFile = m_hClientPipe;     //ReadFile
+        pipeOverlappeds[index + 1].handleFile = m_hClientPipe;   //WriteFile
+        events[index] = pipeOverlappeds[index].hEvent;
+        events[index + 1] = pipeOverlappeds[index + 1].hEvent;
+    }
+    // Create a non-signalled, manual-reset event,
+    // thread stop event
+    HANDLE hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    if (!hEvent)
+    {
+        DWORD last_error = ::GetLastError();
+        last_error;
+        return false;
+    }
+    events[INSTANCES * 3] = hEvent;  //工作线程停止事件
+
+    hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    if (!hEvent)
+    {
+        DWORD last_error = ::GetLastError();
+        last_error;
+        return false;
+    }
+    events[INSTANCES * 3 + 1] = hEvent;  //发送消息队列非空事件
+
+    hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    if (!hEvent)
+    {
+        DWORD last_error = ::GetLastError();
+        last_error;
+        return false;
+    }
+    events[0] = hEvent;  //为了与服务器端兼容，用于占位。不使用
+
+    m_hThread = (HANDLE)_beginthreadex(NULL, 0, &ThreadOverlappedClient, this, 0, &m_threadID);
+    return true;
 }
 
 void NamedPipeIpc::close() {
@@ -325,4 +415,71 @@ bool NamedPipeIpc::handleWriteEvent(int waitIndex, bool& bWritting) {
         bWritting = true;
     } while (false);
     return true;
+}
+
+unsigned int __stdcall ThreadOverlappedClient(PVOID pThis)
+{
+    NamedPipeIpc* ipc = (NamedPipeIpc*)pThis;
+    printf("线程ID号为%4d的子线程说：Hello World\n", GetCurrentThreadId());
+    int indexRead = 1;
+    
+    ZeroMemory(ipc->pipeOverlappeds[indexRead].readBuff, sizeof(ipc->pipeOverlappeds[indexRead].readBuff));
+    ReadFile(
+        ipc->pipeOverlappeds[indexRead].handleFile,
+        ipc->pipeOverlappeds[indexRead].readBuff,
+        BUFSIZE * sizeof(TCHAR),
+        &ipc->pipeOverlappeds[indexRead].cbRead,
+        &ipc->pipeOverlappeds[indexRead]);
+
+    bool bWritting = false;
+    DWORD dwWait;
+    bool bStop = false;
+    while (!bStop) {
+        dwWait = WaitForMultipleObjects(
+            3+2,    // number of event objects 
+            ipc->events,      // array of event objects 
+            FALSE,        // does not wait for all 
+            INFINITE);    // waits indefinitely 
+
+      // dwWait shows which event completed. 
+
+        DWORD waitIndex = dwWait - WAIT_OBJECT_0;
+        if (waitIndex > INSTANCES * 3 + 1 || waitIndex < 0) {
+            std::cout << "error waitIndex:" << waitIndex << "  error:" << GetLastError();
+            bStop = true;
+            break;
+        }
+        if (waitIndex == INSTANCES * 3) { // exit
+            if (ipc->m_hClientPipe) {
+
+                FlushFileBuffers(ipc->m_hClientPipe);
+                CloseHandle(ipc->m_hClientPipe);
+                ipc->m_hClientPipe = NULL;
+            }
+            bStop = true;
+            break;
+        }
+        if (waitIndex == INSTANCES * 3 + 1) {
+            //send msg list is not empty
+            if (!ipc->handleNotEmptyEvent(waitIndex, bWritting)) {
+                break;
+            }
+            continue;
+        }
+        DWORD index = waitIndex / 3;
+        if (waitIndex == 3 * index +1) {
+            //read done
+            if (!ipc->handleReadEvent(waitIndex)) {
+                break;
+            }
+        }
+        else {
+            //write done
+            if (!ipc->handleWriteEvent(waitIndex, bWritting)) {
+                break;
+            }
+        }
+    }
+    std::cout << "worker thread exit" << std::endl;
+    return 0;
 }
