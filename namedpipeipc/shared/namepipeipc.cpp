@@ -23,7 +23,7 @@ bool NamedPipeIpc::init() {
     else {
         success = initNamedpipeClient();
     }
-	return false;
+	return success;
 }
 
 bool NamedPipeIpc::initNamedpipeClient() {
