@@ -343,7 +343,7 @@ bool NamedPipeIpc::handleNotEmptyEvent(int waitIndex, bool& bWritting) {
 
 bool NamedPipeIpc::handleReadEvent(int waitIndex) {
     bool success = false;
-    if (m_type = NamedPipeType::TYPE_SERVER) {
+    if (NamedPipeType::TYPE_SERVER == m_type) {
         success = handleReadEventServer(waitIndex);
     } else {
         success = handleReadEventClient(waitIndex);
@@ -358,6 +358,9 @@ bool NamedPipeIpc::handleReadEventServer(int waitIndex) {
         GetNamedPipeClientProcessId(pipeOverlappeds[waitIndex].handleFile, &clientProcessId);
         std::cout << "read failed. GetLastError:" << GetLastError() << " disconnect the client of process:" << clientProcessId << std::endl;
         DisconnectNamedPipe(pipeOverlappeds[waitIndex].handleFile); //读取错误，断开连接
+
+        // to do: notice the client closed.
+
 
         PipeOverLapped* pConnectOverLapped = &pipeOverlappeds[waitIndex - 1];
         ConnectToNewClient(pConnectOverLapped->handleFile, pConnectOverLapped); //重新等待连接
