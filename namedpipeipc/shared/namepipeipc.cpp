@@ -30,7 +30,6 @@ bool NamedPipeIpc::init() {
 }
 
 bool NamedPipeIpc::initNamedpipeClient() {
-    HANDLE m_hClientPipe;
     BOOL   fSuccess = FALSE;
 
     // Try to open a named pipe; wait for it, if necessary. 
@@ -341,7 +340,18 @@ bool NamedPipeIpc::handleNotEmptyEvent(int waitIndex, bool& bWritting) {
     ResetEvent(events[waitIndex]);
     return true;
 }
+
 bool NamedPipeIpc::handleReadEvent(int waitIndex) {
+    bool success = false;
+    if (m_type = NamedPipeType::TYPE_SERVER) {
+        success = handleReadEventServer(waitIndex);
+    } else {
+        success = handleReadEventClient(waitIndex);
+    }
+    return success;
+}
+
+bool NamedPipeIpc::handleReadEventServer(int waitIndex) {
     if (pipeOverlappeds[waitIndex].Internal != 0) {
         std::cout << "read failed. GetLastError:" << GetLastError() << std::endl;
         ULONG clientProcessId = 0;
@@ -375,6 +385,37 @@ bool NamedPipeIpc::handleReadEvent(int waitIndex) {
         BUFSIZE * sizeof(TCHAR),
         &pReadOverLapped->cbRead,
         pReadOverLapped);
+    return true;
+}
+
+bool NamedPipeIpc::handleReadEventClient(int waitIndex) {
+    if (pipeOverlappeds[waitIndex].Internal != 0) {
+        std::cout << "read failed. GetLastError:" << GetLastError() << std::endl;
+
+        if (pipeOverlappeds[waitIndex].handleFile != 0) {
+            CloseHandle(pipeOverlappeds[waitIndex].handleFile);
+            pipeOverlappeds[waitIndex].handleFile = NULL;
+        }
+        ResetEvent(events[waitIndex]);
+        return false;
+    }
+    std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
+    // to do add the data to the read list;
+    {
+        AutoCsLock scopLock(readMsgsListLock);
+        std::string msg;
+        msg.assign(pipeOverlappeds[waitIndex].readBuff, pipeOverlappeds[waitIndex].InternalHigh);
+        readMsgsList.push_back(msg);
+    }
+    ResetEvent(events[waitIndex]);
+
+    ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
+    ReadFile(
+        pipeOverlappeds[waitIndex].handleFile,
+        pipeOverlappeds[waitIndex].readBuff,
+        BUFSIZE * sizeof(TCHAR),
+        &pipeOverlappeds[waitIndex].cbRead,
+        &pipeOverlappeds[waitIndex]);
     return true;
 }
 

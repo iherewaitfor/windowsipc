@@ -73,8 +73,10 @@ public:
     HANDLE m_hClientPipe;
 private:
     bool initNamedpipeServer();
-    bool initNamedpipeClient();
+    bool initNamedpipeClient();;
 
+    bool handleReadEventClient(int waitIndex);
+    bool handleReadEventServer(int waitIndex);
 
 
 private:
