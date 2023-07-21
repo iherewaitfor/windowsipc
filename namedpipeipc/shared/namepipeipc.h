@@ -78,6 +78,7 @@ private:
     bool handleReadEventClient(int waitIndex);
     bool handleReadEventServer(int waitIndex);
 
+    bool writeMsg(bool& bWritting);
 
 private:
 	std::list<std::string> readMsgsList;
@@ -93,6 +94,7 @@ private:
     HANDLE m_hThread;
     unsigned m_threadID;
 
+    bool m_serverConected;
 
 };
 #endif // 

@@ -303,6 +303,7 @@ unsigned int __stdcall ThreadOverlappedServer(PVOID pThis)
 
 void NamedPipeIpc::handleConnectEvent(int waitIndex)
 {
+    m_serverConected = true;
     // to read
     PipeOverLapped* pReadOverLapped = &pipeOverlappeds[waitIndex + 1];
     bool fSuccess = ReadFile(
@@ -314,30 +315,11 @@ void NamedPipeIpc::handleConnectEvent(int waitIndex)
     ResetEvent(events[waitIndex]);
 }
 bool NamedPipeIpc::handleNotEmptyEvent(int waitIndex, bool& bWritting) {
-    do {
-        if (bWritting || writeMsgsList.empty()) {
-            return false;
-        }
-        //没有在发送,则触发发送。
-        std::string msg;
-        {
-            AutoCsLock scopeLock(writeMsgsListLock);
-            msg = writeMsgsList.front();
-            writeMsgsList.pop_front();
-        }
-        PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[2];
-        ZeroMemory(pWriteOverLapped->writeBuffer, sizeof(pWriteOverLapped->writeBuffer));
-        memcpy(pWriteOverLapped->writeBuffer, msg.c_str(), msg.length());
-        pWriteOverLapped->cbToWrite = msg.length();
-        WriteFile(
-            pWriteOverLapped->handleFile,                  // pipe handle 
-            pWriteOverLapped->writeBuffer,             // message 
-            pWriteOverLapped->cbToWrite,              // message length 
-            &pWriteOverLapped->cbToWrite,             // bytes written 
-            pWriteOverLapped);                  // overlapped
-        bWritting = true;
-    } while (false);
     ResetEvent(events[waitIndex]);
+    if (bWritting) {
+        return true;
+    }
+    writeMsg(bWritting);
     return true;
 }
 
@@ -358,7 +340,7 @@ bool NamedPipeIpc::handleReadEventServer(int waitIndex) {
         GetNamedPipeClientProcessId(pipeOverlappeds[waitIndex].handleFile, &clientProcessId);
         std::cout << "read failed. GetLastError:" << GetLastError() << " disconnect the client of process:" << clientProcessId << std::endl;
         DisconnectNamedPipe(pipeOverlappeds[waitIndex].handleFile); //读取错误，断开连接
-
+        m_serverConected = false;
         // to do: notice the client closed.
 
 
@@ -435,7 +417,11 @@ bool NamedPipeIpc::handleWriteEvent(int waitIndex, bool& bWritting) {
         }
         return false;
     }
-    PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[waitIndex];
+    writeMsg(bWritting);
+    return true;
+}
+
+bool NamedPipeIpc::writeMsg( bool& bWritting) {
     do {
         if (writeMsgsList.empty()) {
             break;
@@ -447,15 +433,16 @@ bool NamedPipeIpc::handleWriteEvent(int waitIndex, bool& bWritting) {
             msg = writeMsgsList.front();
             writeMsgsList.pop_front();
         }
-        ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
-        memcpy(pipeOverlappeds[waitIndex].writeBuffer, msg.c_str(), msg.length());
-        pipeOverlappeds[waitIndex].cbToWrite = msg.length();
+        PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[2];
+        ZeroMemory(pWriteOverLapped->writeBuffer, sizeof(pWriteOverLapped->writeBuffer));
+        memcpy(pWriteOverLapped->writeBuffer, msg.c_str(), msg.length());
+        pWriteOverLapped->cbToWrite = msg.length();
         WriteFile(
-            pipeOverlappeds[waitIndex].handleFile,                  // pipe handle 
-            pipeOverlappeds[waitIndex].writeBuffer,             // message 
-            pipeOverlappeds[waitIndex].cbToWrite,              // message length 
-            &pipeOverlappeds[waitIndex].cbToWrite,             // bytes written 
-            &pipeOverlappeds[waitIndex]);                  // overlapped 
+            pWriteOverLapped->handleFile,                  // pipe handle 
+            pWriteOverLapped->writeBuffer,             // message 
+            pWriteOverLapped->cbToWrite,              // message length 
+            &pWriteOverLapped->cbToWrite,             // bytes written 
+            pWriteOverLapped);                  // overlapped
         bWritting = true;
     } while (false);
     return true;
