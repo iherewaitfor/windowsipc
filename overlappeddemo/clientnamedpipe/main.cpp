@@ -41,7 +41,7 @@ struct  PipeOverLapped : public OVERLAPPED
             last_error;
         }
     }
-    virtual ~PipeOverLapped() {
+    ~PipeOverLapped() {
         if (hEvent) {
             ::CloseHandle(hEvent);
         }
