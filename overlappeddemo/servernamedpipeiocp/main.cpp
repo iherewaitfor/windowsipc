@@ -8,6 +8,7 @@
 #include <list>
 #include <map>
 #include "cslock.h"
+#include "iocp.h"
 
 #define INSTANCES 1 
 #define PIPE_TIMEOUT 5000
@@ -21,8 +22,9 @@ enum IO_NOTICE_TYPE{
     WRITELIST_NOT_EMPTY = 4
 };
 
-struct  PipeOverLapped : public OVERLAPPED
+class  PipeOverLapped : public OVERLAPPED
 {
+public:
     HANDLE handleFile;
     TCHAR readBuff[BUFSIZE];
     DWORD cbRead;
@@ -35,12 +37,13 @@ struct  PipeOverLapped : public OVERLAPPED
         InternalHigh = 0;
         Offset = 0;
         OffsetHigh = 0;
+        hEvent = NULL; //通过IOCP的完成通知进行通知，不需要使用事件。
 
         //customer
         handleFile = NULL;
         cbRead = 0;
         cbToWrite = 0;
-        noticeType = UNKNOW;
+        noticeType = IO_NOTICE_TYPE::UNKNOW;
 
         ZeroMemory(readBuff, sizeof(readBuff));
         ZeroMemory(writeBuffer, sizeof(readBuff));
@@ -63,16 +66,12 @@ struct  PipeOverLapped : public OVERLAPPED
 #define CPKEY_NAMEDPIPE_IO 1
 #define CPKEY_EXIT         2
 
+#define OVSERLAPPED_SIZE 4
 //ConnectNamedPipe
 //ReadFile
 //WriteFile
 //list not empty
-PipeOverLapped pipeOverlappeds[INSTANCES * 3];
-
-//最后的事件：
-//工作线程结束事件、待发送消息队列非空事件
-HANDLE events[INSTANCES*3 +2];
-
+PipeOverLapped pipeOverlappeds[OVSERLAPPED_SIZE];
 
 std::list<std::string> readMsgsList;
 CsLock readMsgsListLock;
@@ -99,13 +98,15 @@ int _tmain(VOID)
     if (!initNamedpipe()) {
         return -1;
     }
+    CIOCP iocp(0);  //创建IO端口
+    iocp.AssociateDevice(pipeOverlappeds[0].handleFile, CPKEY_NAMEDPIPE_IO); //关联命名管道与IOCP
 
     HANDLE hThread;
     unsigned threadID;
 
     printf("Creating worker thread...\n");
     // Create the worker thread.
-    hThread = (HANDLE)_beginthreadex(NULL, 0, &ThreadOverlapped, NULL, 0, &threadID);
+    hThread = (HANDLE)_beginthreadex(NULL, 0, &ThreadOverlapped, &iocp, 0, &threadID);
 
     do {
         // Send a message to all valid pipe. 
@@ -122,7 +123,7 @@ int _tmain(VOID)
 
         int cmpResult = strcmp(sendBuf, "exit");
         if (cmpResult == 0) {
-            SetEvent(events[3 * INSTANCES]);
+            iocp.PostStatus(CPKEY_EXIT, 0, NULL);
             WaitForSingleObject(hThread, 5000);
             std::cout << " main thread exit." << std::endl;
             break;
@@ -134,7 +135,7 @@ int _tmain(VOID)
             AutoCsLock scopeLock(writeMsgsListLock);
             writeMsgsList.push_back(msg);
             if (writeMsgsList.size() == 1) {
-                SetEvent(events[INSTANCES * 3 + 1]); // not empty
+                iocp.PostStatus(CPKEY_NAMEDPIPE_IO, 0, &pipeOverlappeds[3]); // list not empty
             }
         }
 
@@ -203,57 +204,47 @@ void dispatchMsgs() {
 unsigned int __stdcall ThreadOverlapped(PVOID pM)
 {
     printf("beginThread 线程ID号为%4d \n", GetCurrentThreadId());
+    CIOCP* iocp = (CIOCP*)pM;
 
     for (int i = 0; i < INSTANCES; i++) {
         ConnectToNewClient(pipeOverlappeds[i * 3].handleFile, &pipeOverlappeds[i * 3]);
     }
+
+    BOOL bResult = FALSE;
     bool bWritting = false;
-    DWORD dwWait;
-    bool bStop = false;
-    while (!bStop) {
-        dwWait = WaitForMultipleObjects(
-            INSTANCES * 3 + 2,    // number of event objects 
-            events,      // array of event objects 
-            FALSE,        // does not wait for all 
-            INFINITE);    // waits indefinitely 
-
-      // dwWait shows which pipe completed the operation. 
-
-        DWORD waitIndex = dwWait - WAIT_OBJECT_0;
-        if (waitIndex == INSTANCES * 3) {
-            bStop = true;
+    while (true) {
+        // Suspend the thread until an I/O completes
+        ULONG_PTR CompletionKey;
+        DWORD dwNumBytes;
+        PipeOverLapped* pior;
+        bResult = iocp->GetStatus(&CompletionKey, &dwNumBytes, (OVERLAPPED**)&pior, INFINITE);
+        if (CompletionKey == CPKEY_EXIT) {
+            // to do 线程退出
             break;
         }
-        if (waitIndex == INSTANCES * 3 + 1) {
-            //send msg list is not empty
-            if (!handleNotEmptyEvent(waitIndex, bWritting)) {
-                break;
+        if (CompletionKey == CPKEY_NAMEDPIPE_IO) {
+            if (IO_NOTICE_TYPE::Connect == pior->noticeType) {
+                handleConnectEvent(0);
             }
-            continue;
-        }
-        if (waitIndex > INSTANCES * 3 + 1) {
-            std::cout << "error waitIndex:" << waitIndex << "  error:" << GetLastError();
-            bStop = true;
-            break;
-        }
-        DWORD index = waitIndex / 3;
-        if (waitIndex == 3 * index) {
-            //ConnectNamedPipe
-            handleConnectEvent(waitIndex);
-        }
-        else if (waitIndex == 3 * index + 1) {
-            //read done
-            if (!handleReadEvent(waitIndex)) {
+            else if (IO_NOTICE_TYPE::READ == pior->noticeType) {
+                if (!handleReadEvent(1)) {
+                    continue;
+                }
+            }
+            else if (IO_NOTICE_TYPE::WRITE == pior->noticeType) {
+                //write done
+                if (!handleWriteEvent(2, bWritting)) {
+                    break;
+                }
+            }
+            else if (IO_NOTICE_TYPE::WRITELIST_NOT_EMPTY == pior->noticeType) {
+                if (!handleNotEmptyEvent(3, bWritting)) {
+                    break;
+                }
                 continue;
             }
         }
-        else {
-            //write done
-            if (!handleWriteEvent(waitIndex, bWritting)) {
-                break;
-            }
-        }
-    }
+    } // end of while
     std::cout << "worker thread exit" << std::endl;
 
     return 0;
@@ -268,7 +259,6 @@ void handleConnectEvent(int waitIndex) {
         BUFSIZE * sizeof(TCHAR),
         &pReadOverLapped->cbRead,
         pReadOverLapped);
-    ResetEvent(events[waitIndex]);
 }
 bool handleNotEmptyEvent(int waitIndex, bool &bWritting) {
     do {
@@ -294,7 +284,6 @@ bool handleNotEmptyEvent(int waitIndex, bool &bWritting) {
             pWriteOverLapped);                  // overlapped
         bWritting = true;
     } while (false);
-    ResetEvent(events[waitIndex]);
     return true;
 }
 
@@ -309,9 +298,6 @@ bool handleReadEvent(int waitIndex) {
         PipeOverLapped* pConnectOverLapped = &pipeOverlappeds[waitIndex - 1];
         ConnectToNewClient(pConnectOverLapped->handleFile, pConnectOverLapped); //重新等待连接
         std::cout << "to connect to new client." << std::endl;
-
-
-        ResetEvent(events[waitIndex]);
         return false;
     }
     std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
@@ -324,7 +310,6 @@ bool handleReadEvent(int waitIndex) {
     }
     ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
 
-    ResetEvent(events[waitIndex]);
     PipeOverLapped* pReadOverLapped = &pipeOverlappeds[waitIndex];
     bool fSuccess = ReadFile(
         pReadOverLapped->handleFile,
@@ -338,7 +323,6 @@ bool handleReadEvent(int waitIndex) {
 bool handleWriteEvent(int waitIndex, bool& bWritting) {
     ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
     bWritting = false;
-    ResetEvent(events[waitIndex]);
     if (pipeOverlappeds[waitIndex].Internal != 0) {
         std::cout << "write failed. GetLastError:" << GetLastError() << std::endl;
 
@@ -396,32 +380,17 @@ bool initNamedpipe() {
             printf("CreateNamedPipe failed with %d.\n", GetLastError());
             return false;
         }
-        int index = i * 3;
+        int index = i * 4;
         pipeOverlappeds[index].handleFile = pipeHandle;     //ConnectNamedPipe
         pipeOverlappeds[index + 1].handleFile = pipeHandle;   //ReadFile
         pipeOverlappeds[index + 2].handleFile = pipeHandle;   //WriteFile
-        events[index] = pipeOverlappeds[index].hEvent;
-        events[index + 1] = pipeOverlappeds[index + 1].hEvent;
-        events[index + 2] = pipeOverlappeds[index + 2].hEvent;
-    }
-    // Create a non-signalled, manual-reset event,
-    // thread stop event
-    HANDLE hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
-    if (!hEvent)
-    {
-        DWORD last_error = ::GetLastError();
-        last_error;
-        return false;
-    }
-    events[INSTANCES * 3] = hEvent;  //工作线程停止事件
+        pipeOverlappeds[index + 3].handleFile = pipeHandle;   //List not empty
 
-    hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
-    if (!hEvent)
-    {
-        DWORD last_error = ::GetLastError();
-        last_error;
-        return false;
+        pipeOverlappeds[index].noticeType = IO_NOTICE_TYPE::Connect;     //ConnectNamedPipe
+        pipeOverlappeds[index + 1].noticeType = IO_NOTICE_TYPE::READ;   //ReadFile
+        pipeOverlappeds[index + 2].noticeType = IO_NOTICE_TYPE::WRITE;   //WriteFile
+        pipeOverlappeds[index + 3].noticeType = IO_NOTICE_TYPE::WRITELIST_NOT_EMPTY;   //List not empty
     }
-    events[INSTANCES * 3 + 1] = hEvent;  //发送消息队列不为空事件
+
     return true;
 }
