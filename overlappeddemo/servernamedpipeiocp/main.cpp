@@ -22,15 +22,14 @@ enum IO_NOTICE_TYPE{
     WRITELIST_NOT_EMPTY = 4
 };
 
-class  PipeOverLapped : public OVERLAPPED
+struct  PipeOverLapped : public OVERLAPPED
 {
-public:
+    IO_NOTICE_TYPE noticeType;
     HANDLE handleFile;
     TCHAR readBuff[BUFSIZE];
     DWORD cbRead;
     TCHAR writeBuffer[BUFSIZE];
     DWORD cbToWrite;
-    IO_NOTICE_TYPE noticeType;
 
     PipeOverLapped() {
         Internal = 0;
@@ -56,7 +55,7 @@ public:
             last_error;
         }
     }
-    virtual ~PipeOverLapped() {
+    ~PipeOverLapped() {
         if (hEvent) {
             ::CloseHandle(hEvent);
         }
@@ -100,6 +99,8 @@ int _tmain(VOID)
     }
     CIOCP iocp(0);  //创建IO端口
     iocp.AssociateDevice(pipeOverlappeds[0].handleFile, CPKEY_NAMEDPIPE_IO); //关联命名管道与IOCP
+
+    ConnectToNewClient(pipeOverlappeds[0].handleFile, &pipeOverlappeds[0]);
 
     HANDLE hThread;
     unsigned threadID;
@@ -205,11 +206,6 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
 {
     printf("beginThread 线程ID号为%4d \n", GetCurrentThreadId());
     CIOCP* iocp = (CIOCP*)pM;
-
-    for (int i = 0; i < INSTANCES; i++) {
-        ConnectToNewClient(pipeOverlappeds[i * 3].handleFile, &pipeOverlappeds[i * 3]);
-    }
-
     BOOL bResult = FALSE;
     bool bWritting = false;
     while (true) {
