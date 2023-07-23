@@ -119,7 +119,9 @@ int _tmain(VOID)
 
         int cmpResult = strcmp(sendBuf, "exit");
         if (cmpResult == 0) {
-            iocp.PostStatus(CPKEY_EXIT, 0, NULL);
+            for (int i = 0; i < INSTANCES; i++) {
+                iocp.PostStatus(CPKEY_EXIT, 0, NULL);
+            }
             WaitForMultipleObjects(INSTANCES, hThreads, true, 5000); // wait the worder threads exit.
             std::cout << " main thread exit." << std::endl;
             break;
