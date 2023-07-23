@@ -91,8 +91,9 @@ int _tmain(VOID)
     for (int i = 0; i < INSTANCES; i++) {
         iocp.AssociateDevice(pipeOverlappeds[i* NOTICE_COUNT_PERHANDLE].handleFile, CPKEY_NAMEDPIPE_IO_0 + i); //关联命名管道与IOCP
     }
-
-    ConnectToNewClient(pipeOverlappeds[0].handleFile, &pipeOverlappeds[0]);
+    for (int i = 0; i < INSTANCES; i++) {
+        ConnectToNewClient(pipeOverlappeds[i * NOTICE_COUNT_PERHANDLE].handleFile, &pipeOverlappeds[i * NOTICE_COUNT_PERHANDLE + 0]);
+    }
 
     HANDLE hThreads[INSTANCES];
     unsigned threadIDs[INSTANCES];
@@ -215,23 +216,23 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
             break;
         }
         if (CompletionKey >= CPKEY_NAMEDPIPE_IO_0 && CompletionKey < NOTICE_COUNT_PERHANDLE * INSTANCES) {
-            int index = CompletionKey - CPKEY_NAMEDPIPE_IO_0;
+            int indexHandle = CompletionKey - CPKEY_NAMEDPIPE_IO_0;
             if (IO_NOTICE_TYPE::Connect == pior->noticeType) {
-                handleConnectEvent(index);
+                handleConnectEvent(indexHandle * NOTICE_COUNT_PERHANDLE + 0);
             }
             else if (IO_NOTICE_TYPE::READ == pior->noticeType) {
-                if (!handleReadEvent(index)) {
+                if (!handleReadEvent(indexHandle * NOTICE_COUNT_PERHANDLE + 1)) {
                     continue;
                 }
             }
             else if (IO_NOTICE_TYPE::WRITE == pior->noticeType) {
                 //write done
-                if (!handleWriteEvent(index, bWritting)) {
+                if (!handleWriteEvent(indexHandle * NOTICE_COUNT_PERHANDLE + 2, bWritting)) {
                     break;
                 }
             }
             else if (IO_NOTICE_TYPE::WRITELIST_NOT_EMPTY == pior->noticeType) {
-                if (!handleNotEmptyEvent(index, bWritting)) {
+                if (!handleNotEmptyEvent(indexHandle * NOTICE_COUNT_PERHANDLE + 3, bWritting)) {
                     break;
                 }
                 continue;
@@ -298,10 +299,10 @@ bool handleReadEvent(int waitIndex) {
     // to do add the data to the read list;
     {
         int indexHandle = waitIndex / NOTICE_COUNT_PERHANDLE;
-        AutoCsLock scopLock(readMsgsListLocks[waitIndex]);
+        AutoCsLock scopLock(readMsgsListLocks[indexHandle]);
         std::string msg;
         msg.assign(pipeOverlappeds[waitIndex].readBuff, pipeOverlappeds[waitIndex].InternalHigh);
-        readMsgsLists[waitIndex].push_back(msg);
+        readMsgsLists[indexHandle].push_back(msg);
     }
     ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
 
@@ -330,15 +331,15 @@ bool handleWriteEvent(int waitIndex, bool& bWritting) {
     PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[waitIndex];
     do {
         int indexHandle = waitIndex / NOTICE_COUNT_PERHANDLE;
-        if (writeMsgsLists[waitIndex].empty()) {
+        if (writeMsgsLists[indexHandle].empty()) {
             break;
         }
         //没有在发送,则触发发送。
         std::string msg;
         {
             AutoCsLock scopeLock(writeMsgsListLocks[waitIndex]);
-            msg = writeMsgsLists[waitIndex].front();
-            writeMsgsLists[waitIndex].pop_front();
+            msg = writeMsgsLists[indexHandle].front();
+            writeMsgsLists[indexHandle].pop_front();
         }
         ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
         memcpy(pipeOverlappeds[waitIndex].writeBuffer, msg.c_str(), msg.length());
@@ -376,7 +377,7 @@ bool initNamedpipe() {
             printf("CreateNamedPipe failed with %d.\n", GetLastError());
             return false;
         }
-        int index = i * 4;
+        int index = i * NOTICE_COUNT_PERHANDLE;
         pipeOverlappeds[index].handleFile = pipeHandle;     //ConnectNamedPipe
         pipeOverlappeds[index + 1].handleFile = pipeHandle;   //ReadFile
         pipeOverlappeds[index + 2].handleFile = pipeHandle;   //WriteFile
