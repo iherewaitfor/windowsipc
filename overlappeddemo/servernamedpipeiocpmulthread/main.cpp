@@ -10,7 +10,7 @@
 #include "cslock.h"
 #include "iocp.h"
 
-#define INSTANCES 1 
+#define INSTANCES 2 
 #define PIPE_TIMEOUT 5000
 #define BUFSIZE 4096
 
@@ -51,23 +51,24 @@ struct  PipeOverLapped : public OVERLAPPED
     }
 };
 
-#define CPKEY_NAMEDPIPE_IO 1
-#define CPKEY_EXIT         2
+#define CPKEY_EXIT         9999
+#define CPKEY_NAMEDPIPE_IO_0 0
 
-#define OVSERLAPPED_SIZE 4
+
+#define NOTICE_COUNT_PERHANDLE 4
 //ConnectNamedPipe
 //ReadFile
 //WriteFile
 //list not empty
-PipeOverLapped pipeOverlappeds[OVSERLAPPED_SIZE];
+PipeOverLapped pipeOverlappeds[NOTICE_COUNT_PERHANDLE * INSTANCES];
 
-std::list<std::string> readMsgsList;
-CsLock readMsgsListLock;
+std::list<std::string> readMsgsLists[INSTANCES];
+CsLock readMsgsListLocks[INSTANCES];
 void dispatchMsgs();//to do 
 
 // define an write array
-std::list<std::string> writeMsgsList;
-CsLock writeMsgsListLock;
+std::list<std::string> writeMsgsLists[INSTANCES];
+CsLock writeMsgsListLocks[INSTANCES];
 
 TCHAR sendBuf[BUFSIZE] = { 0 };
 
@@ -87,16 +88,20 @@ int _tmain(VOID)
         return -1;
     }
     CIOCP iocp(0);  //创建IO端口
-    iocp.AssociateDevice(pipeOverlappeds[0].handleFile, CPKEY_NAMEDPIPE_IO); //关联命名管道与IOCP
+    for (int i = 0; i < INSTANCES; i++) {
+        iocp.AssociateDevice(pipeOverlappeds[i* NOTICE_COUNT_PERHANDLE].handleFile, CPKEY_NAMEDPIPE_IO_0 + i); //关联命名管道与IOCP
+    }
 
     ConnectToNewClient(pipeOverlappeds[0].handleFile, &pipeOverlappeds[0]);
 
-    HANDLE hThread;
-    unsigned threadID;
+    HANDLE hThreads[INSTANCES];
+    unsigned threadIDs[INSTANCES];
 
     printf("Creating worker thread...\n");
-    // Create the worker thread.
-    hThread = (HANDLE)_beginthreadex(NULL, 0, &ThreadOverlapped, &iocp, 0, &threadID);
+    for (int i = 0; i < INSTANCES; i++) {
+        // Create the worker thread.
+        hThreads[i] = (HANDLE)_beginthreadex(NULL, 0, &ThreadOverlapped, &iocp, 0, &threadIDs[i]);
+    }
 
     do {
         // Send a message to all valid pipe. 
@@ -114,7 +119,7 @@ int _tmain(VOID)
         int cmpResult = strcmp(sendBuf, "exit");
         if (cmpResult == 0) {
             iocp.PostStatus(CPKEY_EXIT, 0, NULL);
-            WaitForSingleObject(hThread, 5000);
+            WaitForMultipleObjects(INSTANCES, hThreads, true, 5000); // wait the worder threads exit.
             std::cout << " main thread exit." << std::endl;
             break;
         }
@@ -122,10 +127,11 @@ int _tmain(VOID)
         std::string msg;
         msg.assign(sendBuf, cWrite);
         {
-            AutoCsLock scopeLock(writeMsgsListLock);
-            writeMsgsList.push_back(msg);
-            if (writeMsgsList.size() == 1) {
-                iocp.PostStatus(CPKEY_NAMEDPIPE_IO, 0, &pipeOverlappeds[3]); // list not empty
+            int indexHandle = 0;
+            AutoCsLock scopeLock(writeMsgsListLocks[indexHandle]);
+            writeMsgsLists[indexHandle].push_back(msg);
+            if (writeMsgsLists[indexHandle].size() == 1) {
+                iocp.PostStatus(CPKEY_NAMEDPIPE_IO_0, 0, &pipeOverlappeds[indexHandle * NOTICE_COUNT_PERHANDLE + 3]); // list not empty
             }
         }
 
@@ -178,9 +184,10 @@ BOOL ConnectToNewClient(HANDLE hPipe, LPOVERLAPPED lpo)
 void dispatchMsgs() {
     std::list<std::string> tempReadList;
     {
+        int indexHandle = 0;
         //取出列表后，立即释放锁
-        AutoCsLock scopLock(readMsgsListLock);
-        tempReadList.swap(readMsgsList);
+        AutoCsLock scopLock(readMsgsListLocks[indexHandle]);
+        tempReadList.swap(readMsgsLists[indexHandle]);
     }
     // to do , process the recieved msgs;
     // dispatch msg to the listenning bussiness.
@@ -207,23 +214,24 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
             // to do 线程退出
             break;
         }
-        if (CompletionKey == CPKEY_NAMEDPIPE_IO) {
+        if (CompletionKey >= CPKEY_NAMEDPIPE_IO_0 && CompletionKey < NOTICE_COUNT_PERHANDLE * INSTANCES) {
+            int index = CompletionKey - CPKEY_NAMEDPIPE_IO_0;
             if (IO_NOTICE_TYPE::Connect == pior->noticeType) {
-                handleConnectEvent(0);
+                handleConnectEvent(index);
             }
             else if (IO_NOTICE_TYPE::READ == pior->noticeType) {
-                if (!handleReadEvent(1)) {
+                if (!handleReadEvent(index)) {
                     continue;
                 }
             }
             else if (IO_NOTICE_TYPE::WRITE == pior->noticeType) {
                 //write done
-                if (!handleWriteEvent(2, bWritting)) {
+                if (!handleWriteEvent(index, bWritting)) {
                     break;
                 }
             }
             else if (IO_NOTICE_TYPE::WRITELIST_NOT_EMPTY == pior->noticeType) {
-                if (!handleNotEmptyEvent(3, bWritting)) {
+                if (!handleNotEmptyEvent(index, bWritting)) {
                     break;
                 }
                 continue;
@@ -247,15 +255,16 @@ void handleConnectEvent(int waitIndex) {
 }
 bool handleNotEmptyEvent(int waitIndex, bool &bWritting) {
     do {
-        if (bWritting || writeMsgsList.empty()) {
+        int indexHandle = waitIndex / NOTICE_COUNT_PERHANDLE;
+        if (bWritting || writeMsgsLists[indexHandle].empty()) {
             return false;
         }
         //没有在发送,则触发发送。
         std::string msg;
         {
-            AutoCsLock scopeLock(writeMsgsListLock);
-            msg = writeMsgsList.front();
-            writeMsgsList.pop_front();
+            AutoCsLock scopeLock(writeMsgsListLocks[indexHandle]);
+            msg = writeMsgsLists[indexHandle].front();
+            writeMsgsLists[indexHandle].pop_front();
         }
         PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[2];
         ZeroMemory(pWriteOverLapped->writeBuffer, sizeof(pWriteOverLapped->writeBuffer));
@@ -288,10 +297,11 @@ bool handleReadEvent(int waitIndex) {
     std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
     // to do add the data to the read list;
     {
-        AutoCsLock scopLock(readMsgsListLock);
+        int indexHandle = waitIndex / NOTICE_COUNT_PERHANDLE;
+        AutoCsLock scopLock(readMsgsListLocks[waitIndex]);
         std::string msg;
         msg.assign(pipeOverlappeds[waitIndex].readBuff, pipeOverlappeds[waitIndex].InternalHigh);
-        readMsgsList.push_back(msg);
+        readMsgsLists[waitIndex].push_back(msg);
     }
     ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
 
@@ -319,15 +329,16 @@ bool handleWriteEvent(int waitIndex, bool& bWritting) {
     }
     PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[waitIndex];
     do {
-        if (writeMsgsList.empty()) {
+        int indexHandle = waitIndex / NOTICE_COUNT_PERHANDLE;
+        if (writeMsgsLists[waitIndex].empty()) {
             break;
         }
         //没有在发送,则触发发送。
         std::string msg;
         {
-            AutoCsLock scopeLock(writeMsgsListLock);
-            msg = writeMsgsList.front();
-            writeMsgsList.pop_front();
+            AutoCsLock scopeLock(writeMsgsListLocks[waitIndex]);
+            msg = writeMsgsLists[waitIndex].front();
+            writeMsgsLists[waitIndex].pop_front();
         }
         ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
         memcpy(pipeOverlappeds[waitIndex].writeBuffer, msg.c_str(), msg.length());
