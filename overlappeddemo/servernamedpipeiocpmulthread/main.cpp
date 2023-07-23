@@ -10,10 +10,10 @@
 #include "cslock.h"
 #include "iocp.h"
 
-#define INSTANCES 2 
+#define INSTANCES 4
 #define PIPE_TIMEOUT 5000
 #define BUFSIZE 4096
-
+#define THREAD_SIZE 2
 enum IO_NOTICE_TYPE{
     UNKNOW = 0,
     Connect = 1,
@@ -84,6 +84,8 @@ bool handleReadEvent(int waitIndex);
 bool handleWriteEvent(int waitIndex, bool& bWritting);
 unsigned int __stdcall ThreadOverlapped(PVOID pM);
 
+void sendMsg(std::string msg, CIOCP& iocp);
+
 int _tmain(VOID)
 {
     if (!initNamedpipe()) {
@@ -97,11 +99,11 @@ int _tmain(VOID)
         ConnectToNewClient(pipeOverlappeds[i * NOTICE_COUNT_PERHANDLE].handleFile, &pipeOverlappeds[i * NOTICE_COUNT_PERHANDLE + 0]);
     }
 
-    HANDLE hThreads[INSTANCES];
-    unsigned threadIDs[INSTANCES];
+    HANDLE hThreads[THREAD_SIZE];
+    unsigned threadIDs[THREAD_SIZE];
 
     printf("Creating worker thread...\n");
-    for (int i = 0; i < INSTANCES; i++) {
+    for (int i = 0; i < THREAD_SIZE; i++) {
         // Create the worker thread.
         hThreads[i] = (HANDLE)_beginthreadex(NULL, 0, &ThreadOverlapped, &iocp, 0, &threadIDs[i]);
     }
@@ -121,7 +123,7 @@ int _tmain(VOID)
 
         int cmpResult = strcmp(sendBuf, "exit");
         if (cmpResult == 0) {
-            for (int i = 0; i < INSTANCES; i++) {
+            for (int i = 0; i < THREAD_SIZE; i++) {
                 iocp.PostStatus(CPKEY_EXIT, 0, NULL);
             }
             WaitForMultipleObjects(INSTANCES, hThreads, true, 5000); // wait the worder threads exit.
@@ -131,17 +133,7 @@ int _tmain(VOID)
 
         std::string msg;
         msg.assign(sendBuf, cWrite);
-        {
-            int indexHandle = 0;
-            if (msg.find("send1") != std::string::npos) {
-                indexHandle = 1;
-            }
-            AutoCsLock scopeLock(writeMsgsListLocks[indexHandle]);
-            writeMsgsLists[indexHandle].push_back(msg);
-            if (writeMsgsLists[indexHandle].size() == 1) {
-                iocp.PostStatus(CPKEY_NAMEDPIPE_IO_0 + indexHandle, 0, &pipeOverlappeds[indexHandle * NOTICE_COUNT_PERHANDLE + 3]); // list not empty
-            }
-        }
+        sendMsg(msg, iocp);
 
         //模拟在消息循环时分发已经收到的消息。比如主线程可定时读取消息队列
         dispatchMsgs();
@@ -399,4 +391,37 @@ bool initNamedpipe() {
     }
 
     return true;
+}
+
+void sendMsg(std::string msg, CIOCP& iocp) {
+    do {
+
+        if (msg.find("broadcast") != std::string::npos) {
+            for (int i = 0; i < INSTANCES; i++) {
+                int indexHandle = i;
+                AutoCsLock scopeLock(writeMsgsListLocks[indexHandle]);
+                writeMsgsLists[indexHandle].push_back(msg);
+                if (writeMsgsLists[indexHandle].size() == 1) {
+                    iocp.PostStatus(CPKEY_NAMEDPIPE_IO_0 + indexHandle, 0, &pipeOverlappeds[indexHandle * NOTICE_COUNT_PERHANDLE + 3]); // list not empty
+                }
+            }
+            break;
+        }
+        int indexHandle = 0;
+        if (msg.find("send1") != std::string::npos) {
+            indexHandle = 1;
+        }
+        if (msg.find("send2") != std::string::npos) {
+            indexHandle = 2;
+        }
+        if (msg.find("send3") != std::string::npos) {
+            indexHandle = 3;
+        }
+        AutoCsLock scopeLock(writeMsgsListLocks[indexHandle]);
+        writeMsgsLists[indexHandle].push_back(msg);
+        if (writeMsgsLists[indexHandle].size() == 1) {
+            iocp.PostStatus(CPKEY_NAMEDPIPE_IO_0 + indexHandle, 0, &pipeOverlappeds[indexHandle * NOTICE_COUNT_PERHANDLE + 3]); // list not empty
+        }
+
+    } while (false);
 }
