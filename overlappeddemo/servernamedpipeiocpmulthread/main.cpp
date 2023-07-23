@@ -185,19 +185,22 @@ BOOL ConnectToNewClient(HANDLE hPipe, LPOVERLAPPED lpo)
 }
 
 void dispatchMsgs() {
-    std::list<std::string> tempReadList;
-    {
-        int indexHandle = 0;
+    std::list<std::string> tempReadLists[INSTANCES];
+    for (int i = 0; i < INSTANCES; i++) {
+        int indexHandle = i;
         //取出列表后，立即释放锁
         AutoCsLock scopLock(readMsgsListLocks[indexHandle]);
-        tempReadList.swap(readMsgsLists[indexHandle]);
+        tempReadLists[indexHandle].swap(readMsgsLists[indexHandle]);
     }
     // to do , process the recieved msgs;
     // dispatch msg to the listenning bussiness.
     std::cout << " dispatchMsgs " << std::endl;
-    while (!tempReadList.empty()) {
-        std::cout << tempReadList.front() << std::endl;
-        tempReadList.pop_front();
+    for (int i = 0; i < INSTANCES; i++) {
+
+        while (!tempReadLists[i].empty()) {
+            std::cout << tempReadLists[i].front() << std::endl;
+            tempReadLists[i].pop_front();
+        }
     }
 }
 
