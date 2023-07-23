@@ -131,10 +131,13 @@ int _tmain(VOID)
         msg.assign(sendBuf, cWrite);
         {
             int indexHandle = 0;
+            if (msg.find("send1") != std::string::npos) {
+                indexHandle = 1;
+            }
             AutoCsLock scopeLock(writeMsgsListLocks[indexHandle]);
             writeMsgsLists[indexHandle].push_back(msg);
             if (writeMsgsLists[indexHandle].size() == 1) {
-                iocp.PostStatus(CPKEY_NAMEDPIPE_IO_0, 0, &pipeOverlappeds[indexHandle * NOTICE_COUNT_PERHANDLE + 3]); // list not empty
+                iocp.PostStatus(CPKEY_NAMEDPIPE_IO_0 + indexHandle, 0, &pipeOverlappeds[indexHandle * NOTICE_COUNT_PERHANDLE + 3]); // list not empty
             }
         }
 
@@ -272,7 +275,7 @@ bool handleNotEmptyEvent(int waitIndex, bool &bWritting) {
             msg = writeMsgsLists[indexHandle].front();
             writeMsgsLists[indexHandle].pop_front();
         }
-        PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[2];
+        PipeOverLapped* pWriteOverLapped = &pipeOverlappeds[indexHandle * NOTICE_COUNT_PERHANDLE + 2];
         ZeroMemory(pWriteOverLapped->writeBuffer, sizeof(pWriteOverLapped->writeBuffer));
         memcpy(pWriteOverLapped->writeBuffer, msg.c_str(), msg.length());
         pWriteOverLapped->cbToWrite = msg.length();
