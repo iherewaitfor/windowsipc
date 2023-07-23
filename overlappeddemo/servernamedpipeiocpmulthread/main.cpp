@@ -24,12 +24,13 @@ enum IO_NOTICE_TYPE{
 
 struct  PipeOverLapped : public OVERLAPPED
 {
-    IO_NOTICE_TYPE noticeType;
     HANDLE handleFile;
     TCHAR readBuff[BUFSIZE];
     DWORD cbRead;
     TCHAR writeBuffer[BUFSIZE];
     DWORD cbToWrite;
+    IO_NOTICE_TYPE noticeType;
+    bool bWritting;
 
     PipeOverLapped() {
         Internal = 0;
@@ -43,6 +44,7 @@ struct  PipeOverLapped : public OVERLAPPED
         cbRead = 0;
         cbToWrite = 0;
         noticeType = IO_NOTICE_TYPE::UNKNOW;
+        bWritting = false;
 
         ZeroMemory(readBuff, sizeof(readBuff));
         ZeroMemory(writeBuffer, sizeof(readBuff));
@@ -212,7 +214,6 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
     printf("beginThread Ïß³ÌIDºÅÎª%4d \n", GetCurrentThreadId());
     CIOCP* iocp = (CIOCP*)pM;
     BOOL bResult = FALSE;
-    bool bWritting = false;
     while (true) {
         // Suspend the thread until an I/O completes
         ULONG_PTR CompletionKey;
@@ -235,12 +236,12 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
             }
             else if (IO_NOTICE_TYPE::WRITE == pior->noticeType) {
                 //write done
-                if (!handleWriteEvent(indexHandle * NOTICE_COUNT_PERHANDLE + 2, bWritting)) {
+                if (!handleWriteEvent(indexHandle * NOTICE_COUNT_PERHANDLE + 2, pipeOverlappeds[indexHandle*NOTICE_COUNT_PERHANDLE+2].bWritting)) {
                     break;
                 }
             }
             else if (IO_NOTICE_TYPE::WRITELIST_NOT_EMPTY == pior->noticeType) {
-                if (!handleNotEmptyEvent(indexHandle * NOTICE_COUNT_PERHANDLE + 3, bWritting)) {
+                if (!handleNotEmptyEvent(indexHandle * NOTICE_COUNT_PERHANDLE + 3, pipeOverlappeds[indexHandle * NOTICE_COUNT_PERHANDLE + 2].bWritting)) {
                     break;
                 }
                 continue;
