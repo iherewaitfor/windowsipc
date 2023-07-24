@@ -493,6 +493,11 @@ A pointer to a SECURITY_ATTRIBUTES structure that specifies a security descripto
 本示例的命名管道，只支持同时连接一个客户端。使用了异步IO。管道的收发逻辑运行在工作线程。如果服务器需要与多个客户端相连，可以使用多个NamedPipeIpc对象，设置不同的管道名字。
 [https://github.com/iherewaitfor/windowsipc/tree/main/namedpipeipc](https://github.com/iherewaitfor/windowsipc/tree/main/namedpipeipc)
 
+servernamedpipe为服务器使用示例。
+
+clientnamedpipe为客户端使用示例。
+
+
 # 命令管道iocp版本demo
 本示例的命名管道，支持多个同时连接多个客户端，服务器使用了IO完成端口算得IO。
 [https://github.com/iherewaitfor/windowsipc/tree/main/overlappeddemo/servernamedpipeiocpmulthread](https://github.com/iherewaitfor/windowsipc/tree/main/overlappeddemo/servernamedpipeiocpmulthread)
