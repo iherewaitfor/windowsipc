@@ -11,6 +11,8 @@
       - [\[in\] nDefaultTimeOut](#in-ndefaulttimeout)
       - [\[in, optional\] lpSecurityAttributes](#in-optional-lpsecurityattributes)
 - [命名管道通信带字节流大小pipewithsizedemo](#命名管道通信带字节流大小pipewithsizedemo)
+- [命令管道 OverLapped 封装版本Demo](#命令管道-overlapped-封装版本demo)
+- [命令管道iocp版本demo](#命令管道iocp版本demo)
 - [共享内存](#共享内存)
       - [\[in\]           HANDLE                hFile,](#in-----------handle----------------hfile)
       - [\[in, optional\] LPSECURITY\_ATTRIBUTES lpFileMappingAttributes](#in-optional-lpsecurity_attributes-lpfilemappingattributes)
@@ -486,6 +488,19 @@ A pointer to a SECURITY_ATTRIBUTES structure that specifies a security descripto
             }
         }
 ```
+
+# 命令管道 OverLapped 封装版本Demo
+本示例的命名管道，只支持同时连接一个客户端。使用了异步IO。管道的收发逻辑运行在工作线程。如果服务器需要与多个客户端相连，可以使用多个NamedPipeIpc对象，设置不同的管道名字。
+[https://github.com/iherewaitfor/windowsipc/tree/main/namedpipeipc](https://github.com/iherewaitfor/windowsipc/tree/main/namedpipeipc)
+
+# 命令管道iocp版本demo
+本示例的命名管道，支持多个同时连接多个客户端，服务器使用了IO完成端口算得IO。
+[https://github.com/iherewaitfor/windowsipc/tree/main/overlappeddemo/servernamedpipeiocpmulthread](https://github.com/iherewaitfor/windowsipc/tree/main/overlappeddemo/servernamedpipeiocpmulthread)
+
+
+
+
+
 # 共享内存
 本例的代码位置位于[https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo](https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo)。
 进程A代码在[https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo/processa](https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo/processa), 进程B代码在[https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo/processb](https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo/processb)
