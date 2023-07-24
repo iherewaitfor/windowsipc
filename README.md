@@ -1,6 +1,6 @@
 
 - [Windows IPC](#windows-ipc)
-  - [命名管道通信](#命名管道通信)
+- [命名管道通信](#命名管道通信)
     - [CreateNamedPipeW详解](#createnamedpipew详解)
       - [\[in\]           LPCWSTR               lpName,](#in-----------lpcwstr---------------lpname)
       - [\[in\]           DWORD                 dwOpenMode,](#in-----------dword-----------------dwopenmode)
@@ -10,8 +10,8 @@
       - [\[in\] nInBufferSize](#in-ninbuffersize)
       - [\[in\] nDefaultTimeOut](#in-ndefaulttimeout)
       - [\[in, optional\] lpSecurityAttributes](#in-optional-lpsecurityattributes)
-  - [命名管道通信带字节流大小pipewithsizedemo](#命名管道通信带字节流大小pipewithsizedemo)
-  - [共享内存](#共享内存)
+- [命名管道通信带字节流大小pipewithsizedemo](#命名管道通信带字节流大小pipewithsizedemo)
+- [共享内存](#共享内存)
       - [\[in\]           HANDLE                hFile,](#in-----------handle----------------hfile)
       - [\[in, optional\] LPSECURITY\_ATTRIBUTES lpFileMappingAttributes](#in-optional-lpsecurity_attributes-lpfilemappingattributes)
       - [\[in\]           DWORD                 flProtect](#in-----------dword-----------------flprotect)
@@ -22,7 +22,7 @@
 
 # Windows IPC
 
-## 命名管道通信
+# 命名管道通信
 
 本例的代码位置位于[https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo](https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo)。
 进程A代码在[https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo/processa](https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo/processa), 进程B代码在[https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo/processb](https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo/processb)
@@ -446,7 +446,7 @@ A value of zero will result in a default time-out of 50 milliseconds.
 #### [in, optional] lpSecurityAttributes
 A pointer to a SECURITY_ATTRIBUTES structure that specifies a security descriptor for the new named pipe and determines whether child processes can inherit the returned handle. If lpSecurityAttributes is NULL, the named pipe gets a default security descriptor and the handle cannot be inherited. The ACLs in the default security descriptor for a named pipe grant full control to the LocalSystem account, administrators, and the creator owner. They also grant read access to members of the Everyone group and the anonymous account.
 
-## 命名管道通信带字节流大小pipewithsizedemo
+# 命名管道通信带字节流大小pipewithsizedemo
 进行A创建读管道时，设置为字节流模式
 ```C++
 
@@ -486,7 +486,7 @@ A pointer to a SECURITY_ATTRIBUTES structure that specifies a security descripto
             }
         }
 ```
-## 共享内存
+# 共享内存
 本例的代码位置位于[https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo](https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo)。
 进程A代码在[https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo/processa](https://github.com/iherewaitfor/windowsipc/tree/main/sharememorydemo/processa), 进程B代码在[https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo/processb](https://github.com/iherewaitfor/windowsipc/tree/main/pipedemo/processb)
 
