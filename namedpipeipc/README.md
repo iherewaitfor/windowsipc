@@ -9,6 +9,7 @@
     - [线程阻塞函数WaitForMultipleObjects](#线程阻塞函数waitformultipleobjects)
     - [线程循环](#线程循环)
   - [互斥资源](#互斥资源)
+- [参考](#参考)
 
 
 # namedpipeipc 命名管道ipc封装Demo
@@ -24,7 +25,18 @@
 
 
 # HOW TO RUN
+先安装Cmake.
 
+在namedpipeipc目录下新建build文件夹，进入build文件下，运行命令行
+```
+cmake .. -A win32
+```
+打开生成的.sln文件，全部编译。选择需要调试的项目，比如servernamepipe，点击启动。
+cmake的使用可以参考本github上的项目[cmakevisualstudio#使用命令行生成video-studio-的sln文件](https://github.com/iherewaitfor/cmakevisualstudio#%E4%BD%BF%E7%94%A8%E5%91%BD%E4%BB%A4%E8%A1%8C%E7%94%9F%E6%88%90video-studio-%E7%9A%84sln%E6%96%87%E4%BB%B6)
+
+注意先运行servernamedpipe，再运行clientnamedpipe.exe
+
+运行后，输入字符，按回车，便能把消息发送过去了。其中输入"exit"表示退出。
 # servernamedpipe 服务器侧
 服务器侧主要功能
 
@@ -236,3 +248,6 @@ unsigned int __stdcall ThreadOverlappedServer(PVOID pThis)
         readMsgsList.push_back(msg);
     }
 ```
+
+# 参考
+[https://github.com/iherewaitfor/cmakevisualstudio#%E4%BD%BF%E7%94%A8%E5%91%BD%E4%BB%A4%E8%A1%8C%E7%94%9F%E6%88%90video-studio-%E7%9A%84sln%E6%96%87%E4%BB%B6](https://github.com/iherewaitfor/cmakevisualstudio#%E4%BD%BF%E7%94%A8%E5%91%BD%E4%BB%A4%E8%A1%8C%E7%94%9F%E6%88%90video-studio-%E7%9A%84sln%E6%96%87%E4%BB%B6)
