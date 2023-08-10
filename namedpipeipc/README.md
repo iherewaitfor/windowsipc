@@ -9,6 +9,7 @@
     - [线程阻塞函数WaitForMultipleObjects](#线程阻塞函数waitformultipleobjects)
     - [线程循环](#线程循环)
   - [互斥资源](#互斥资源)
+- [clientnamedpipe 客户端侧](#clientnamedpipe-客户端侧)
 - [参考](#参考)
 
 
@@ -34,7 +35,7 @@ cmake .. -A win32
 打开生成的.sln文件，全部编译。选择需要调试的项目，比如servernamepipe，点击启动。
 cmake的使用可以参考本github上的项目[cmakevisualstudio#使用命令行生成video-studio-的sln文件](https://github.com/iherewaitfor/cmakevisualstudio#%E4%BD%BF%E7%94%A8%E5%91%BD%E4%BB%A4%E8%A1%8C%E7%94%9F%E6%88%90video-studio-%E7%9A%84sln%E6%96%87%E4%BB%B6)
 
-注意先运行servernamedpipe，再运行clientnamedpipe.exe
+注意先运行servernamedpipe.exe，再运行clientnamedpipe.exe
 
 运行后，输入字符，按回车，便能把消息发送过去了。其中输入"exit"表示退出。
 # servernamedpipe 服务器侧
@@ -47,10 +48,64 @@ cmake的使用可以参考本github上的项目[cmakevisualstudio#使用命令�
 ## 主线程
 ### 主线程事件循环
 
-本项目使用不断接收用户输入，来驱动程序运行。
-可以进行操作
+本项目中，主线程使用一个循环不断接收用户输入，来驱动程序运行。实际应用中，主线程会有消息循环。
+主线程可以进行操作
 - 给客户端发送消息
 - 退出程序
+
+```C++
+int _tmain(VOID)
+{
+    NamedPipeIpc ipc("\\\\.\\pipe\\mynamedpipe", NamedPipeType::TYPE_SERVER);
+    if (!ipc.init()) {
+        return -1;
+    }
+
+    do {
+        // Send a message to all valid pipe. 
+        ZeroMemory(sendBuf, BUFSIZE);
+        char  ch;
+        int i = 0;
+        while (std::cin >> std::noskipws >> ch) {
+            if (ch == '\n') {
+                break;
+            }
+            sendBuf[i++] = ch;
+        }
+        DWORD cWrite = (lstrlen(sendBuf) + 1) * sizeof(TCHAR);
+
+        int cmpResult = strcmp(sendBuf, "exit");
+        if (cmpResult == 0) {
+            ipc.close();
+            std::cout << " main thread exit." << std::endl;
+            break;
+        }
+
+        std::string msg;
+        msg.assign(sendBuf, cWrite);
+        ipc.sendMsg(msg);
+        //模拟在消息循环时分发已经收到的消息。比如主线程可定时读取消息队列
+        dispatchMsgs(ipc.getMsgs());
+    } while (true);
+
+    return 0;
+}
+```
+
+
+模拟分发 接收消息队列中的消息。实际应用中，可以调用业务注册进来的回调函数，给各个业务分发消息。此处只是输出到控制台展示。
+```C++
+
+void dispatchMsgs(std::list<std::string> &tempReadList) {
+    // to do , process the recieved msgs;
+    // dispatch msg to the listenning bussiness.
+    std::cout << " dispatchMsgs " << std::endl;
+    while (!tempReadList.empty()) {
+        std::cout << tempReadList.front() << std::endl;
+        tempReadList.pop_front();
+    }
+}
+```
 
 ## 工作线程
 为了防止主线程被阻塞，把命名管道的IO操作，如收发消息等，放在了工作线程。
@@ -248,6 +303,6 @@ unsigned int __stdcall ThreadOverlappedServer(PVOID pThis)
         readMsgsList.push_back(msg);
     }
 ```
-
+# clientnamedpipe 客户端侧
 # 参考
 [https://github.com/iherewaitfor/cmakevisualstudio#%E4%BD%BF%E7%94%A8%E5%91%BD%E4%BB%A4%E8%A1%8C%E7%94%9F%E6%88%90video-studio-%E7%9A%84sln%E6%96%87%E4%BB%B6](https://github.com/iherewaitfor/cmakevisualstudio#%E4%BD%BF%E7%94%A8%E5%91%BD%E4%BB%A4%E8%A1%8C%E7%94%9F%E6%88%90video-studio-%E7%9A%84sln%E6%96%87%E4%BB%B6)
