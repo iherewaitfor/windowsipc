@@ -304,5 +304,16 @@ unsigned int __stdcall ThreadOverlappedServer(PVOID pThis)
     }
 ```
 # clientnamedpipe 客户端侧
+客户端侧逻辑与服务器类似。
+
+不过少了连接客户端事件，其他事件一样。工作线程的线程循环也一样。只是少了连接客户端事件的触发。
+
+- 管道相关OverlappedIO事件
+  - 读完成事件
+  - 写完成事件
+- 待发送消息队列非空事件
+- 线程退出事件
+
+事件
 # 参考
 [https://github.com/iherewaitfor/cmakevisualstudio#%E4%BD%BF%E7%94%A8%E5%91%BD%E4%BB%A4%E8%A1%8C%E7%94%9F%E6%88%90video-studio-%E7%9A%84sln%E6%96%87%E4%BB%B6](https://github.com/iherewaitfor/cmakevisualstudio#%E4%BD%BF%E7%94%A8%E5%91%BD%E4%BB%A4%E8%A1%8C%E7%94%9F%E6%88%90video-studio-%E7%9A%84sln%E6%96%87%E4%BB%B6)
