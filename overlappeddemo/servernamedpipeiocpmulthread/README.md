@@ -29,6 +29,13 @@ cmake .. -A win32
 
 详情请参考[namedpipeipc#how-to-run](https://github.com/iherewaitfor/windowsipc/tree/main/namedpipeipc#how-to-run)
 
+客户端程序可以使用本解决方案中的clientnamedpipe项目。clientnamedpipe.exe。
+
+本服务器支持同时多个客户端连接。
+
+另外客户端还可以使用[namedpipeipc中的clientnamedpipe.exe](https://github.com/iherewaitfor/windowsipc/tree/main/namedpipeipc#how-to-run)
+
+
 # 主线程
 主线程的主要完成两个事件
 - 初始化IO完成端口相关事件
