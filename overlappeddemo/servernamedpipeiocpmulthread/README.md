@@ -6,6 +6,7 @@
 - [工作线程](#工作线程)
   - [工作线程相关CompletionKey和 PipeOverLapped的IO类型](#工作线程相关completionkey和-pipeoverlapped的io类型)
   - [线程循环](#线程循环)
+- [参考](#参考)
 
 
 # servernamedpipeiocpmulthread 使用IO完成端口的命名管道示例
@@ -29,7 +30,18 @@ cmake .. -A win32
 详情请参考[namedpipeipc#how-to-run](https://github.com/iherewaitfor/windowsipc/tree/main/namedpipeipc#how-to-run)
 
 # 主线程
-主线程的
+主线程的主要完成两个事件
+- 初始化IO完成端口相关事件
+  - 创建多个命名管道文件句柄 
+  - 创建IO完成端
+  - 把文件句柄关联到该IO完成端口
+  - 命名管道开始等待客户端连接。
+  - 启动工作线程池
+- 主线程循环
+  - 不断接收用户输出
+  - 支持向不同客户端发送消息
+  - 支持退出命令
+
 
 ```C++
 int _tmain(VOID)
@@ -88,8 +100,6 @@ int _tmain(VOID)
 }
 ```
 
-
-
 # IOCP
 相关核心函数
 - CreateIoCompletionPort
@@ -103,6 +113,11 @@ int _tmain(VOID)
   - 向IO完成端口完成队列中插入元素。会触发GetQueuedCompletionStatus返回。
 
 ## IOCP辅助类
+把IO完成端口的操作轻封装为一个一个类，便于操作。特别是CreateIoCompletionPort这个函数的两个功能
+- 创建 IO完成端口
+- 关联文件句柄到IO完成端口
+拆成了两个函数Create、AssociateDevice
+
 ```C++
 class CIOCP {
 public:
@@ -267,4 +282,8 @@ unsigned int __stdcall ThreadOverlapped(PVOID pM)
     return 0;
 }
 ```
+
+# 参考
+
+《windows核心编程》
 
