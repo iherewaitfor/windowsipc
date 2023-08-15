@@ -188,7 +188,7 @@ private:
 
 - CompletionKey
   - CPKEY_EXIT
-  - 每个文件句柄一个CompletionKey：设置成句柄数据下标
+  - 每个文件句柄一个CompletionKey：设置成句柄数组下标
 - 每个文件句柄对应的IO事件
   - Connect = 1,  连接客户端
   - READ = 2,     读完成
