@@ -178,7 +178,7 @@ void dispatchMsgs(std::list<std::string> &tempReadList) {
     events[index + 1] = pipeOverlappeds[index + 1].hEvent;//ReadFile
     events[index + 2] = pipeOverlappeds[index + 2].hEvent;//WriteFile
 
-
+    //退出事件需要叫醒所有的线程，使用手动重置事件
     HANDLE hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
     if (!hEvent)
     {
@@ -188,14 +188,15 @@ void dispatchMsgs(std::list<std::string> &tempReadList) {
     }
     events[INSTANCES * 3] = hEvent;  //工作线程停止事件
 
-    hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    //只需要叫醒一个线程。使用自动重置事件
+    hEvent = ::CreateEvent(0, FALSE, FALSE, 0);
     if (!hEvent)
     {
         DWORD last_error = ::GetLastError();
         last_error;
         return false;
     }
-    events[INSTANCES * 3 + 1] = hEvent;  //发送消息队列不为空事件
+    events[INSTANCES * 3 + 1] = hEvent;  //发送消息队列非空事件
 ```
 ### 线程阻塞函数WaitForMultipleObjects
 WaitForMultipleObjects，可以用来等待多个事件。当没有事件触发时，线程会阻塞在该函数。
