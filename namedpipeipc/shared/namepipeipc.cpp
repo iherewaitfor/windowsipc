@@ -88,6 +88,7 @@ bool NamedPipeIpc::initNamedpipeClient() {
     }
     // Create a non-signalled, manual-reset event,
     // thread stop event
+    //退出事件需要叫醒所有的线程，使用手动重置事件
     HANDLE hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
     if (!hEvent)
     {
@@ -97,7 +98,8 @@ bool NamedPipeIpc::initNamedpipeClient() {
     }
     events[INSTANCES * 3] = hEvent;  //工作线程停止事件
 
-    hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    //只需要叫醒一个线程。使用自动重置事件
+    hEvent = ::CreateEvent(0, FALSE, FALSE, 0);
     if (!hEvent)
     {
         DWORD last_error = ::GetLastError();
@@ -312,10 +314,8 @@ void NamedPipeIpc::handleConnectEvent(int waitIndex)
         BUFSIZE * sizeof(TCHAR),
         &pReadOverLapped->cbRead,
         pReadOverLapped);
-    ResetEvent(events[waitIndex]);
 }
 bool NamedPipeIpc::handleNotEmptyEvent(int waitIndex, bool& bWritting) {
-    ResetEvent(events[waitIndex]);
     if (bWritting) {
         return true;
     }
@@ -349,7 +349,6 @@ bool NamedPipeIpc::handleReadEventServer(int waitIndex) {
         std::cout << "to connect to new client." << std::endl;
 
 
-        ResetEvent(events[waitIndex]);
         return false;
     }
     std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
@@ -362,7 +361,6 @@ bool NamedPipeIpc::handleReadEventServer(int waitIndex) {
     }
     ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
 
-    ResetEvent(events[waitIndex]);
     PipeOverLapped* pReadOverLapped = &pipeOverlappeds[waitIndex];
     bool fSuccess = ReadFile(
         pReadOverLapped->handleFile,
@@ -381,7 +379,6 @@ bool NamedPipeIpc::handleReadEventClient(int waitIndex) {
             CloseHandle(pipeOverlappeds[waitIndex].handleFile);
             pipeOverlappeds[waitIndex].handleFile = NULL;
         }
-        ResetEvent(events[waitIndex]);
         return false;
     }
     std::cout << pipeOverlappeds[waitIndex].readBuff << std::endl;
@@ -392,7 +389,6 @@ bool NamedPipeIpc::handleReadEventClient(int waitIndex) {
         msg.assign(pipeOverlappeds[waitIndex].readBuff, pipeOverlappeds[waitIndex].InternalHigh);
         readMsgsList.push_back(msg);
     }
-    ResetEvent(events[waitIndex]);
 
     ZeroMemory(pipeOverlappeds[waitIndex].readBuff, sizeof(pipeOverlappeds[waitIndex].readBuff));
     ReadFile(
@@ -407,7 +403,6 @@ bool NamedPipeIpc::handleReadEventClient(int waitIndex) {
 bool NamedPipeIpc::handleWriteEvent(int waitIndex, bool& bWritting) {
     ZeroMemory(pipeOverlappeds[waitIndex].writeBuffer, sizeof(pipeOverlappeds[waitIndex].writeBuffer));
     bWritting = false;
-    ResetEvent(events[waitIndex]);
     if (pipeOverlappeds[waitIndex].Internal != 0) {
         std::cout << "write failed. GetLastError:" << GetLastError() << std::endl;
 

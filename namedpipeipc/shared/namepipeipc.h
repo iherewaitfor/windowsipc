@@ -28,8 +28,9 @@ struct  PipeOverLapped : public OVERLAPPED
         ZeroMemory(readBuff, sizeof(readBuff));
         ZeroMemory(writeBuffer, sizeof(readBuff));
 
-        // Create a non-signalled, manual-reset event,
-        hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+        // Create a non-signalled, auto-reset event,
+        // IO操作，只需要叫醒一个线程。使用自动重置事件
+        hEvent = ::CreateEvent(0, FALSE, FALSE, 0);
         if (!hEvent)
         {
             DWORD last_error = ::GetLastError();
