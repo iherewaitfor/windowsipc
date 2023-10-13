@@ -186,7 +186,7 @@ bool NamedPipeIpc::initNamedpipeServer() {
     }
     events[INSTANCES * 3] = hEvent;  //工作线程停止事件
 
-    hEvent = ::CreateEvent(0, TRUE, FALSE, 0);
+    hEvent = ::CreateEvent(0, FALSE, FALSE, 0);
     if (!hEvent)
     {
         DWORD last_error = ::GetLastError();
