@@ -204,7 +204,7 @@ enum IO_NOTICE_TYPE{
     WRITELIST_NOT_EMPTY = 4
 };
 ```
-PipeOverLapped继承OVERLAPPED,用户存储额外的信息。注意由于现在已是借助iocp进行通知，不需要使用Event，所以设置hEvent = NULL.
+PipeOverLapped继承OVERLAPPED,用于存储额外的信息。注意由于现在已是借助iocp进行通知，不需要使用Event，所以设置hEvent = NULL.
 注意定义了成员IO_NOTICE_TYPE noticeType，用于区分不同的IO操作类型，以便知道是哪个IO操作完成了。
 
 ```C++
